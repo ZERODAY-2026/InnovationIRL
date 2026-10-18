@@ -74,8 +74,19 @@ Something is listed as done only after it has actually been run.
   - the OWID profile, subset CSV and seed generator, added through configuration only
 - **Phase 5 (built):** Verified Insights. A live run showed 1 finding with its query ID, and dropped 2 unverifiable ones with reasons.
 
+**Phase 4 live: the answer changes when the data changes (run 18 Oct, about 3:35 PM).** The question was "Which 5 nations had the highest revenue in 1995?"
+
+| | Query ID | Top 5 |
+|---|---|---|
+| Before | `01c7cf45-000e-16d0-0002-b98a0001523a` | INDONESIA, FRANCE, RUSSIA, MOZAMBIQUE, CANADA |
+| After `demo_change.sql` (one tagged order of 60,000,000 for a JAPAN customer, run as `DATAMIND_ADMIN`) | `01c7cf65-000e-1673-0000-0002b98ac51d` | INDONESIA, JAPAN, FRANCE, RUSSIA, MOZAMBIQUE |
+
+- The diff reported "JAPAN: new in the result" and "CANADA: no longer in the result".
+- The same SQL ran again with no new plan and no new model call. The answer text re-rendered from Gemma's original cell-pointer template, now naming JAPAN.
+
 **Waiting on a team action:**
-- Running `demo_change.sql` and the OWID seed SQL as `DATAMIND_ADMIN` (the app role is read-only).
+- `demo_revert.sql`.
+- The OWID seed SQL, run as `DATAMIND_ADMIN` (the app role is read-only).
 - Held-out set A.
 
 **Not working yet:**
