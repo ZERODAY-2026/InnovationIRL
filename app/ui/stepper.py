@@ -5,6 +5,7 @@ Every state, duration and revealed detail comes from the Envelope: nothing is si
 """
 from __future__ import annotations
 
+import time
 from html import escape
 
 import streamlit as st
@@ -95,7 +96,14 @@ def render_live(dm, env: Envelope, phase: str) -> None:
     if sql:
         html("<p class='dm-reveal'><b>SQL</b> " + ("being checked" if phase == "planned" else "sent back to Gemma"
                                                      if phase == "repair" else "that runs") + ":</p>")
-        st.code(sql, language="sql")
+        if phase == "planned":  # reveal the real SQL line by line, at most 0.6 s in total
+            code, lines = st.empty(), sql.splitlines()
+            for k in range(1, len(lines)):
+                code.code("\n".join(lines[:k]), language="sql")
+                time.sleep(min(0.05, 0.6 / len(lines)))
+            code.code(sql, language="sql")
+        else:
+            st.code(sql, language="sql")
     if phase == "repair" and env.gate:
         html("<p class='dm-reveal'><b>Why it was sent back:</b> " + escape("; ".join(env.gate.errors[:2])) + "</p>")
     if phase in ("checked", "ran") and env.gate:

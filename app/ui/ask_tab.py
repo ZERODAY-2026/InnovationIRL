@@ -1,6 +1,7 @@
 """Ask tab: question box, answer, result table, trace and every non-answer state."""
 from __future__ import annotations
 
+import inspect
 from html import escape
 
 import streamlit as st
@@ -58,7 +59,10 @@ def _ask_live(dm, question: str) -> Envelope:
             stepper.render_live(dm, env, phase)
 
     draw("start", Envelope(question=question, profile=dm.profile.name, status="ERROR"))
-    env = dm.ask(question, _context(), progress=draw)
+    if "progress" in inspect.signature(dm.ask).parameters:
+        env = dm.ask(question, _context(), progress=draw)
+    else:  # an engine cached before the progress callback existed: restart the app for live steps
+        env = dm.ask(question, _context())
     slot.empty()
     return env
 
