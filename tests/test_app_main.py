@@ -134,3 +134,21 @@ def test_chart_and_rerun_diff_with_both_query_ids(tpch, envs):
     assert not at.exception
     page = text(at)
     assert "qid-answer" in page and "qid-rerun" in page and "REVENUE 200.50 -&gt; 210.00" in page
+
+
+def test_dig_deeper_shows_verified_findings_and_drop_count(tpch, envs, monkeypatch):
+    import app.ui.extras as extras
+    from datamind.contracts import Insight, InsightsReport
+    shown = Insight(kind="share", title="Revenue share by nation", sql=SQL, query_id="qid-insight",
+                    columns=["N_NAME", "REVENUE"], rows=[["JAPAN", 2.0], ["CHINA", 1.0]], verified=True,
+                    answer=RenderedAnswer(segments=[Segment(text="JAPAN", row=0, column="N_NAME"),
+                                                    Segment(text=" leads.")], grounded=True))
+    dropped = Insight(kind="trend", title="Trend", sql=SQL, reason="numbers not in the rows")
+    monkeypatch.setattr(extras, "dig_deeper", lambda dm, env: InsightsReport(shown=[shown], dropped=[dropped]))
+    at = ask(tpch, envs, "top")
+    at.button(key="dig-qid-answer").click()
+    at.run()
+    assert not at.exception
+    page = text(at)
+    assert "qid-insight" in page and "1 proposed analysis(es) dropped" in page and "<b>JAPAN</b> leads." in page
+    assert len(at.get("vega_lite_chart")) == 2

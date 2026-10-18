@@ -24,3 +24,5 @@ h3 { font-size: 1.125rem !important; font-weight: 600 !important; margin-top: 24
 .dm-pass { color: var(--ok); } .dm-warnflag { color: var(--warn); } .dm-fail { color: var(--bad); }
 .dm-pass::before, .dm-warnflag::before, .dm-fail::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; background: currentColor; }
 :focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
+[data-testid="stHeaderActionElements"] { display: none; }
+button[kind="tertiary"] { text-align: left; padding: 2px 0; min-height: 0; }
