@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from .config import Settings, load_settings
-from .contracts import AnswerDraft, Envelope, Plan, RenderedAnswer, Segment
+from .contracts import AnswerDraft, Envelope, ExecutionResult, Plan, RenderedAnswer, Segment
 from .gate import check_sql
 from .gemma import GemmaClient, ModelError
 from .profile import Profile, load_profile
 from .prompts import EXPLAIN_SYSTEM, PLAN_SYSTEM, Turn, explain_prompt, plan_prompts
 from .receipt import build_receipt, filter_literals, period_filters, zero_row_probe
-from .render import deterministic_answer, is_empty, render_answer
+from .render import deterministic_answer, format_value, is_empty, render_answer
 from .sf_exec import QueryError, SnowflakeRunner, SnowflakeUnavailable
 
 MAX_REPAIRS = 2
@@ -36,6 +37,7 @@ class DataMind:
         allow_cloud = self.profile.cloud_allowed
         repair: tuple[str, list[str]] | None = None
         gate = None
+        result: ExecutionResult | None = None
         for _ in range(MAX_REPAIRS + 1):
             started = time.perf_counter()
             try:
@@ -67,25 +69,29 @@ class DataMind:
             except QueryError as exc:
                 problems = [f"Snowflake could not compile the query: {exc}"]
             _add_time(env, "explain_ms", started)
+            if not problems:
+                started = time.perf_counter()
+                try:
+                    result = self.runner.execute(gate.sql or "", gate.row_cap or self.profile.max_rows)
+                except SnowflakeUnavailable as exc:
+                    env.message = str(exc)
+                    return env
+                except QueryError as exc:  # e.g. a text value compared with a number: let Gemma repair it
+                    problems = [f"Snowflake failed while running the query: {exc}"]
+                _add_time(env, "execute_ms", started)
             if problems:
                 env.gate = gate.model_copy(update={"ok": False, "errors": problems})
                 repair = (plan.sql or "", problems)
                 gate = None
+                result = None
                 continue
             break
-        if gate is None or not gate.ok:
+        if result is None or gate is None:
             last = env.gate.errors if env.gate else []
             env.message = ("I could not write a valid read-only query for this question after "
                            f"{MAX_REPAIRS + 1} attempts. Last problems: " + "; ".join(last[:3]))
             return env
 
-        started = time.perf_counter()
-        try:
-            result = self.runner.execute(gate.sql or "", gate.row_cap or self.profile.max_rows)
-        except (QueryError, SnowflakeUnavailable) as exc:
-            env.message = f"Snowflake could not run the query: {exc}"
-            return env
-        _add_time(env, "execute_ms", started)
         env.execution = result
         env.receipt = build_receipt(result.sql, self.profile, env.plan.assumptions if env.plan else [], gate.row_cap)
         env.status = "ANSWER"
@@ -160,11 +166,68 @@ class DataMind:
         except ModelError:
             return deterministic_answer(result, money, rejected=["explain step unavailable"])
         env.llm_calls.append(call)
+        env.answer_template = draft.answer
         _add_time(env, "explain_answer_ms", started)
+        return self._render(draft.answer, question, result)
+
+    def _render(self, template: str, question: str, result: ExecutionResult) -> RenderedAnswer:
+        money = self.profile.money_columns()
         numbers, dates = filter_literals(result.sql)
         coverage_dates = {d for pair in self.profile.coverage.values() for d in pair}
-        return render_answer(draft.answer, result, question, money, audit_numbers=numbers,
+        return render_answer(template, result, question, money, audit_numbers=numbers,
                              audit_dates=dates | coverage_dates)
+
+    def rerun(self, previous: Envelope) -> Envelope:
+        """Run the same SQL again on live data (no model call) and report what changed, cell by cell."""
+        if previous.execution is None:
+            raise ValueError("only answered questions can be re-run")
+        env = previous.model_copy(deep=True)
+        env.llm_calls, env.timings_ms, env.diagnostics, env.diagnostic_query_id = [], {}, [], None
+        env.previous_query_id = previous.execution.query_id
+        started = time.perf_counter()
+        try:
+            result = self.runner.execute(previous.execution.sql, len(previous.execution.rows) or 1)
+        except (QueryError, SnowflakeUnavailable) as exc:
+            env.status, env.message, env.execution, env.answer = "ERROR", f"Snowflake could not re-run the query: {exc}", None, None
+            return env
+        _add_time(env, "execute_ms", started)
+        env.execution = result
+        money = self.profile.money_columns()
+        if previous.answer_template and not is_empty(result):
+            env.answer = self._render(previous.answer_template, previous.question, result)
+        else:
+            env.answer = deterministic_answer(result, money)
+        env.changes = diff_results(previous.execution, result, money)
+        return env
+
+
+def diff_results(old: ExecutionResult, new: ExecutionResult, money: set[str]) -> list[str]:
+    """Cell-level differences between two runs of the same SQL. Rows are matched by their text label columns."""
+    if old.columns != new.columns:
+        return ["The result columns changed."]
+    labels = [i for i, c in enumerate(old.columns)
+              if all(isinstance(r[i], str) or r[i] is None for r in old.rows + new.rows)]
+
+    def key(row: list[Any], index: int) -> tuple:
+        return tuple(row[i] for i in labels) if labels else (index,)
+
+    old_rows = {key(r, i): r for i, r in enumerate(old.rows)}
+    new_rows = {key(r, i): r for i, r in enumerate(new.rows)}
+    changes: list[str] = []
+    for k, row in new_rows.items():
+        name = " / ".join(str(v) for v in k) if labels else f"row {k[0] + 1}"
+        if k not in old_rows:
+            changes.append(f"{name}: new in the result")
+            continue
+        for i, column in enumerate(new.columns):
+            if i in labels or row[i] == old_rows[k][i]:
+                continue
+            changes.append(f"{name}: {column} {format_value(old_rows[k][i], column, money)} -> "
+                           f"{format_value(row[i], column, money)}")
+    changes += [f"{' / '.join(str(v) for v in k) if labels else f'row {k[0] + 1}'}: no longer in the result"
+                for k in old_rows if k not in new_rows]
+    return changes or ["No differences: the data behind this answer has not changed."]
+
 
 def _status_message(plan: Plan) -> str:
     if plan.status == "CLARIFY":

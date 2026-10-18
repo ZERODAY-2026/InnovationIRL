@@ -85,12 +85,9 @@ class SnowflakeRunner:
             cur.execute("EXPLAIN USING TABULAR " + sql)
         except SnowflakeError as exc:
             raise QueryError(_message(exc), getattr(exc, "sfqid", None)) from exc
-        columns = [_col_name(d).lower() for d in cur.description]
-        rows = cur.fetchall()
-        if "operation" in columns:
-            i = columns.index("operation")
-            if any(str(r[i]).lower() == "cartesianjoin" for r in rows):
-                return ["the query plan contains a cartesian join (a join condition is probably missing)"]
+        columns = [_col_name(d) for d in cur.description]
+        if cartesian_scan(columns, cur.fetchall()):
+            return ["the query plan cross-joins table rows (a join condition is probably missing)"]
         return []
 
     def execute(self, sql: str, max_rows: int) -> ExecutionResult:
@@ -140,6 +137,38 @@ class SnowflakeRunner:
                 self._conn.close()
             finally:
                 self._conn = None
+
+
+def cartesian_scan(columns: list[str], rows: list[Any]) -> bool:
+    """True if an EXPLAIN plan has a CartesianJoin fed directly by table scans.
+
+    Cross-joining single-row aggregates (e.g. revenue 1997 minus revenue 1996) is legitimate and not flagged:
+    the walk down from the join stops at Aggregate and WithReference nodes.
+    """
+    names = [c.lower() for c in columns]
+    if "operation" not in names:
+        return False
+    op = names.index("operation")
+    if not any(str(r[op]).lower() == "cartesianjoin" for r in rows):
+        return False
+    if "id" not in names or "parent" not in names:
+        return True  # cannot tell what feeds the join: stay conservative
+    ident, parent = names.index("id"), names.index("parent")
+    step = names.index("step") if "step" in names else None
+    children: dict[tuple, list[Any]] = {}
+    for r in rows:
+        children.setdefault((r[step] if step is not None else 0, r[parent]), []).append(r)
+
+    def scans_below(r: Any) -> bool:
+        for child in children.get((r[step] if step is not None else 0, r[ident]), []):
+            kind = str(child[op]).lower()
+            if kind == "tablescan":
+                return True
+            if kind not in ("aggregate", "withreference") and scans_below(child):
+                return True
+        return False
+
+    return any(scans_below(r) for r in rows if str(r[op]).lower() == "cartesianjoin")
 
 
 def _col_name(description_item: Any) -> str:

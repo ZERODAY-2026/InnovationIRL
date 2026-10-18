@@ -35,10 +35,11 @@ class FakeGemma:
 
 
 class FakeRunner:
-    def __init__(self, rows=None, explain=(), later_rows=()):
+    def __init__(self, rows=None, explain=(), later_rows=(), execute_errors=()):
         self.rows = rows if rows is not None else [["GERMANY", Decimal("1234567.891")], ["FRANCE", Decimal("1200000.5")]]
         self.explain_results, self.executed = list(explain), []
         self.later_rows = list(later_rows)  # rows for the 2nd, 3rd... execute (e.g. a diagnosis query)
+        self.execute_errors = list(execute_errors)
 
     def explain(self, sql):
         item = self.explain_results.pop(0) if self.explain_results else []
@@ -47,6 +48,8 @@ class FakeRunner:
         return item
 
     def execute(self, sql, max_rows):
+        if self.execute_errors:
+            raise self.execute_errors.pop(0)
         self.executed.append(sql)
         rows = self.rows if len(self.executed) == 1 or not self.later_rows else self.later_rows.pop(0)
         return ExecutionResult(query_id=f"01b-fake-{len(self.executed)}", sql=sql, columns=["NATION", "REVENUE"], rows=rows,
@@ -106,6 +109,40 @@ def test_cartesian_join_is_repaired(tpch):
     runner = FakeRunner(explain=[["the query plan contains a cartesian join"], []])
     dm, gemma, _ = make(tpch, [plan(), plan()], [{"answer": "{{r0.NATION}} leads."}], runner=runner)
     assert dm.ask(Q).status == "ANSWER" and "cartesian" in gemma.calls[1]["prompt"]
+
+
+def test_runtime_error_is_repaired(tpch):
+    runner = FakeRunner(execute_errors=[QueryError("Numeric value 'Customer#999999999' is not recognized")])
+    dm, gemma, _ = make(tpch, [plan(), plan()], [{"answer": "{{r0.NATION}} leads."}], runner=runner)
+    env = dm.ask(Q)
+    assert env.status == "ANSWER" and "failed while running" in gemma.calls[1]["prompt"]
+
+
+def test_rerun_replays_sql_and_lists_changes(tpch):
+    runner = FakeRunner()
+    dm, gemma, _ = make(tpch, [plan()], [{"answer": "{{r0.NATION}} led with {{r0.REVENUE}}."}], runner=runner)
+    first = dm.ask(Q)
+    runner.rows = [["JAPAN", Decimal("1400000")], ["GERMANY", Decimal("1234567.891")]]
+    again = dm.rerun(first)
+    assert again.previous_query_id == first.execution.query_id != again.execution.query_id
+    assert runner.executed[0] == runner.executed[1]  # same SQL, no new plan
+    assert len(gemma.calls) == 2 and again.llm_calls == []
+    assert again.answer.text == "JAPAN led with 1,400,000.00."
+    assert "JAPAN: new in the result" in again.changes and "FRANCE: no longer in the result" in again.changes
+
+
+def test_rerun_without_changes_says_so(tpch):
+    dm, _, _ = make(tpch, [plan()], [{"answer": "{{r0.NATION}} leads."}])
+    first = dm.ask(Q)
+    assert dm.rerun(first).changes == ["No differences: the data behind this answer has not changed."]
+
+
+def test_rerun_reports_changed_values(tpch):
+    runner = FakeRunner()
+    dm, _, _ = make(tpch, [plan()], [{"answer": "{{r0.NATION}} leads."}], runner=runner)
+    first = dm.ask(Q)
+    runner.rows = [["GERMANY", Decimal("1300000")], ["FRANCE", Decimal("1200000.5")]]
+    assert dm.rerun(first).changes == ["GERMANY: REVENUE 1,234,567.89 -> 1,300,000.00"]
 
 
 def test_empty_result_skips_explain_model(tpch):

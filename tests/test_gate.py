@@ -49,6 +49,11 @@ ALLOWED = {
         SELECT YEAR(O_ORDERDATE) AS Y, COUNT(*) AS N FROM ORDERS GROUP BY Y HAVING COUNT(*) > 10 ORDER BY Y""",
     "top n syntax": "SELECT TOP 5 C_NAME, C_ACCTBAL FROM CUSTOMER ORDER BY C_ACCTBAL DESC",
     "ilike filter": "SELECT P_NAME FROM PART WHERE P_TYPE ILIKE '%brass%'",
+    "numeric text and date text are fine": "SELECT COUNT(*) AS N FROM ORDERS WHERE O_CUSTKEY = '42' AND O_ORDERDATE >= '1995-01-01'",
+    "difference of single-row totals": """
+        SELECT a.R1997 - b.R1996 AS CHANGE FROM
+        (SELECT SUM(L_EXTENDEDPRICE) AS R1997 FROM LINEITEM WHERE L_SHIPDATE >= '1997-01-01') a,
+        (SELECT SUM(L_EXTENDEDPRICE) AS R1996 FROM LINEITEM WHERE L_SHIPDATE < '1997-01-01') b""",
 }
 
 REJECTED = {
@@ -84,6 +89,8 @@ REJECTED = {
     "account metadata": "SELECT CURRENT_ACCOUNT(), N_NAME FROM NATION",
     "empty": "   ",
     "not sql": "hello world",
+    "text compared with numeric key": "SELECT O_ORDERKEY FROM ORDERS WHERE O_CUSTKEY = 'Customer#999999999'",
+    "text compared with date": "SELECT COUNT(*) AS N FROM ORDERS WHERE O_ORDERDATE > 'last year'",
     "hidden personal column": "SELECT C_NAME, C_PHONE FROM CUSTOMER",
     "star leaks hidden columns": "SELECT * FROM CUSTOMER LIMIT 5",
     "qualified star": "SELECT c.* FROM CUSTOMER c LIMIT 5",

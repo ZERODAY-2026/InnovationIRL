@@ -107,6 +107,7 @@ def check_sql(sql: str | None, profile: Profile, max_rows: int | None = None) ->
     qualified = _qualified(tree, profile, errors, warnings)
     if qualified is not None:
         errors.extend(_join_errors(qualified, profile))
+        errors.extend(_type_errors(qualified, profile))
     if errors:
         return _fail(*errors, tables=tables_used)
 
@@ -186,6 +187,39 @@ def _join_errors(qualified: exp.Expression, profile: Profile) -> list[str]:
     if errors:
         errors.append("declared joins: " + "; ".join(str(e) for e in profile.edges()))
     return errors
+
+
+_NUMERIC = re.compile(r"^\s*-?\d+(\.\d+)?\s*$")
+_DATE_TEXT = re.compile(r"^\s*\d{4}-\d{2}-\d{2}")
+
+
+def _type_errors(qualified: exp.Expression, profile: Profile) -> list[str]:
+    """A number or date column compared with text that is not a number or date fails at run time in Snowflake."""
+    errors: list[str] = []
+    for scope in traverse_scope(qualified):
+        alias_table = {alias.upper(): source.name.upper() for alias, source in scope.sources.items()
+                       if isinstance(source, exp.Table) and source.name.upper() in profile.tables}
+        for node in scope.expression.find_all(exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.In):
+            if node.find_ancestor(exp.Select) is not scope.expression:
+                continue
+            if isinstance(node, exp.In):
+                column, literals = node.this, list(node.expressions)
+            else:
+                column, literals = (node.left, [node.right]) if isinstance(node.left, exp.Column) else (node.right, [node.left])
+            if not isinstance(column, exp.Column):
+                continue
+            table = alias_table.get(column.table.upper())
+            col = profile.tables[table].columns.get(column.name.upper()) if table else None
+            if col is None or col.type not in ("number", "date"):
+                continue
+            for literal in literals:
+                if not (isinstance(literal, exp.Literal) and literal.is_string):
+                    continue
+                text = literal.name
+                if (col.type == "number" and not _NUMERIC.match(text)) or (col.type == "date" and not _DATE_TEXT.match(text)):
+                    errors.append(f"{table}.{col.name} is a {col.type} column but is compared with the text '{text}'; "
+                                  "compare a text column instead (for example a name column)")
+    return list(dict.fromkeys(errors))
 
 
 def _apply_row_cap(tree: exp.Expression, cap: int, warnings: list[str]) -> None:

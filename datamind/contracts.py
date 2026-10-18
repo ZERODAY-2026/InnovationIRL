@@ -114,3 +114,6 @@ class Envelope(BaseModel):
     timings_ms: dict[str, int] = Field(default_factory=dict)
     diagnostics: list[str] = Field(default_factory=list)  # e.g. how many rows each filter keeps when nothing matched
     diagnostic_query_id: str | None = None
+    answer_template: str | None = None  # Gemma's {{rN.COL}} text, reused when the same SQL is re-run
+    previous_query_id: str | None = None  # set on a re-run: the query this one replays
+    changes: list[str] = Field(default_factory=list)  # cell-level differences from the previous run
