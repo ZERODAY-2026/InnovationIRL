@@ -75,3 +75,4 @@ h3 { margin-top: 32px !important; }
 @keyframes dmfill { from { width: 0; } }
 @keyframes dmpulse { 50% { box-shadow: 0 0 0 4px rgba(31,78,121,.18); } }
 @media (max-width: 640px) { .dm-stepper { flex-direction: column; gap: 12px; } .dm-node::before, .dm-node::after { display: none; } }
+[data-testid="stForm"] [data-testid="stTextAreaRootElement"] { height: auto !important; min-height: 0 !important; }
