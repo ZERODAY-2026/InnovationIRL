@@ -27,6 +27,7 @@ Run `.venv\Scripts\python -m streamlit run app/main.py` (after the setup below).
 - **Run again on current data** re-runs the same SQL and lists cell-level changes with both query IDs. **Dig deeper** shows follow-up findings, each backed by its own Snowflake query.
 - **Data tab.** Where the data lives: each `DATABASE.SCHEMA.TABLE`, its purpose, live row count, columns and types, 5 sample rows, the allowed join paths and the data coverage.
 - Rubric self-check with evidence and open gaps: [`docs/RUBRIC.md`](docs/RUBRIC.md).
+- Interactive: charts have hover tooltips, hover highlight and zoom/pan; the live stepper paces each real step (0.4 s) and types the real SQL; click a table on the Data tab for its columns and samples.
 
 ## Technology
 

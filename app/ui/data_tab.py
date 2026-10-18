@@ -48,9 +48,8 @@ def render(dm, catalog: dict | None, error: str | None) -> None:
         visible = [c for c in t.columns.values() if not c.hidden]
         count = catalog["counts"].get(t.name) if catalog else None
         rows_text = f"{count:,} rows" if isinstance(count, int) else "row count unavailable"
-        st.markdown(f"#### {p.database}.{p.schema}.{t.name}")
-        html(f"<p class='dm-small'>{escape(t.description)} · {rows_text} · {len(visible)} columns</p>")
-        with st.expander(f"Columns and 5 sample rows of {t.name}"):
+        with st.expander(f"{p.database}.{p.schema}.{t.name} · {rows_text} · {len(visible)} columns"):
+            html(f"<p class='dm-small'>{escape(t.description)}</p>")
             html(table_html(["Column", "Type", "Meaning"], [[c.name, c.type, c.desc] for c in visible], set(), limit=999))
             if catalog and t.name in catalog["samples"]:
                 qid, cols, rows = catalog["samples"][t.name]

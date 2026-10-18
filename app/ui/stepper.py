@@ -80,7 +80,7 @@ def stepper_html(env: Envelope, phase: str) -> str:
         f"<span class='dm-node-name'>{i + 1}. {escape(name)}</span>"
         f"<span class='dm-node-text'><span class='dm-sr'>{WORDS[state]}: </span>{escape(text)}</span></li>"
         for i, (name, (state, text)) in enumerate(zip(NAMES, items)))
-    return f"<ol class='dm-stepper' aria-label='How the query happens'>{nodes}</ol>"
+    return f"<div class='dm-flow'><ol class='dm-stepper' aria-label='How the query happens'>{nodes}</ol></div>"
 
 
 def render_live(dm, env: Envelope, phase: str) -> None:
@@ -96,11 +96,11 @@ def render_live(dm, env: Envelope, phase: str) -> None:
     if sql:
         html("<p class='dm-reveal'><b>SQL</b> " + ("being checked" if phase == "planned" else "sent back to Gemma"
                                                      if phase == "repair" else "that runs") + ":</p>")
-        if phase == "planned":  # reveal the real SQL line by line, at most 0.6 s in total
+        if phase == "planned":  # reveal the real SQL line by line, at most 1.2 s in total
             code, lines = st.empty(), sql.splitlines()
             for k in range(1, len(lines)):
                 code.code("\n".join(lines[:k]), language="sql")
-                time.sleep(min(0.05, 0.6 / len(lines)))
+                time.sleep(min(0.12, 1.2 / len(lines)))
             code.code(sql, language="sql")
         else:
             st.code(sql, language="sql")

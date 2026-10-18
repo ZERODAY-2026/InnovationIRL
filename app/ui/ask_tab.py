@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import time
 from html import escape
 
 import streamlit as st
@@ -47,7 +48,19 @@ def chips_html(dm, env: Envelope | None, catalog_ok: bool) -> str:
     else:
         sf, cls = ("Snowflake configured, not connected" if s.snowflake_ready else "Snowflake not configured"), "bad"
     chips = [("", f"Dataset · {dm.profile.title}"), ("", gemma), (cls, sf)]
-    return "<div class='dm-chips'>" + "".join(f"<span class='dm-chip {c}'>{escape(t)}</span>" for c, t in chips) + "</div>"
+    chip_row = "".join(f"<span class='dm-chip {c}'>{escape(t)}</span>" for c, t in chips)
+    return ("<div class='dm-hero'><h1 class='dm-wordmark'>DataMind</h1><p class='dm-tagline'>Ask your Snowflake data "
+            f"in plain English and see the query behind every answer.</p><div class='dm-chips'>{chip_row}</div></div>")
+
+
+def _clean(text: str | None) -> str:
+    """Strip whitespace and stray surrounding quotes from a pasted question."""
+    return (text or "").strip().strip("\"'`\u201c\u201d\u2018\u2019").strip()
+
+
+def _card(env: Envelope, inner: str) -> str:
+    return (f"<div class='dm-card dm-answer-card'><p class='dm-q'>Question: {escape(env.question)}</p>"
+            f"<div class='dm-answer'>{inner}</div></div>")
 
 
 def _ask_live(dm, question: str) -> Envelope:
@@ -57,6 +70,8 @@ def _ask_live(dm, question: str) -> Envelope:
     def draw(phase: str, env: Envelope) -> None:
         with slot.container():
             stepper.render_live(dm, env, phase)
+        if phase != "start":
+            time.sleep(0.4)  # pacing so fast steps stay visible; the durations shown are the measured ones
 
     draw("start", Envelope(question=question, profile=dm.profile.name, status="ERROR"))
     if "progress" in inspect.signature(dm.ask).parameters:
@@ -77,8 +92,8 @@ def render(dm, catalog_ok: bool) -> Envelope | None:
         asked = button.form_submit_button("Ask", type="primary", key="ask", width="stretch")
     if examples:
         st.pills("Example questions", examples, key="example_pick", on_change=_pick)
-    typed = (st.session_state.get("question") or "").strip() if asked else ""
-    question = st.session_state.pop("pending", None) or typed
+    typed = _clean(st.session_state.get("question")) if asked else ""
+    question = _clean(st.session_state.pop("pending", None)) or typed
     if question:
         st.session_state.history.append(_ask_live(dm, question))
     env = st.session_state.history[-1] if st.session_state.history else None
@@ -91,10 +106,9 @@ def render(dm, catalog_ok: bool) -> Envelope | None:
 
 
 def show(dm, env: Envelope) -> None:
-    html(f"<p class='dm-q'>Question: {escape(env.question)}</p>")
     if env.status == "ANSWER" and env.execution and env.answer:
         body, note = split_note(env.answer.segments)
-        html(f"<div class='dm-answer'>{answer_html(body)}</div>")
+        html(_card(env, answer_html(body)))
         if note:
             html(f"<div class='dm-note'>{escape(note)}</div>")
         if env.diagnostics:
@@ -124,7 +138,7 @@ def show(dm, env: Envelope) -> None:
         trace.render(dm, env)
         extras.actions(dm, env)
     elif env.status == "CLARIFY":
-        html(f"<div class='dm-answer'>{escape(env.message or 'Could you say a little more?')}</div>")
+        html(_card(env, escape(env.message or 'Could you say a little more?')))
         html("<p class='dm-small'>Nothing was run yet. Pick a reply or type your own question above.</p>")
         html(stepper.stepper_html(env, "final"))
         options = env.plan.options[:3] if env.plan else []
@@ -135,12 +149,12 @@ def show(dm, env: Envelope) -> None:
         lead = ("I can't answer that from this data." if env.status == "UNSUPPORTED"
                 else "I won't run that: this assistant only reads data.")
         reason = env.message or (env.plan.reason if env.plan else None) or "not given"
-        html(f"<div class='dm-answer'>{escape(lead)}</div>")
+        html(_card(env, escape(lead)))
         html(stepper.stepper_html(env, "final"))
         html(f"<div class='dm-note'><b>Nothing was executed in Snowflake.</b><br>Blocked request: "
              f"{escape(env.question)}<br>Reason: {escape(reason)}</div>")
     else:
-        html("<div class='dm-answer'>No answer this time.</div>")
+        html(_card(env, "No answer this time."))
         html(f"<div class='dm-note'><b>No result came back from Snowflake.</b><br>{escape(env.message or 'Unknown error.')}</div>")
         html(stepper.stepper_html(env, "final"))
         if env.gate and env.gate.errors:

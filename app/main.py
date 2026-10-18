@@ -5,6 +5,7 @@ app/slice_view.py stays as the minimal fallback view.
 """
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -19,22 +20,22 @@ from datamind.config import load_settings  # noqa: E402
 from datamind.pipeline import DataMind  # noqa: E402
 
 st.set_page_config(page_title="DataMind", layout="wide", initial_sidebar_state="collapsed")
-html(f"<style>{(Path(__file__).parent / 'style.css').read_text(encoding='utf-8')}</style>")
+CSS = "\n".join(line for line in (Path(__file__).parent / "style.css").read_text(encoding="utf-8").splitlines()
+                if line.strip())  # no blank lines, so Markdown never splits the style block
+st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
 
 
 @st.cache_resource
-def engine() -> DataMind:
+def engine(api: str) -> DataMind:  # api: a new DataMind.ask signature gets a new engine
     return DataMind(load_settings())
 
 
 try:
-    dm = st.session_state["engine"] if "engine" in st.session_state else engine()  # tests inject a fake engine
+    dm = st.session_state["engine"] if "engine" in st.session_state else engine(str(inspect.signature(DataMind.ask)))  # tests inject a fake engine
 except Exception as exc:  # configuration problems are shown, not raised
     st.error(f"Configuration problem: {exc}")
     st.stop()
 
-html("<div class='dm-head'><h1 class='dm-wordmark'>DataMind</h1>"
-     "<p class='dm-tagline'>Ask your Snowflake data in plain English and see the query behind every answer.</p></div>")
 chips = st.empty()
 with st.expander("How it works"):
     html("<p>Gemma reads the question and writes one read-only SQL query. A gate checks it (single SELECT, allow-listed "

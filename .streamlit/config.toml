@@ -6,11 +6,11 @@ toolbarMode = "minimal"
 
 [theme]
 base = "light"
-primaryColor = "#1F4E79"
-backgroundColor = "#FAF8F3"
-secondaryBackgroundColor = "#F1EDE4"
-textColor = "#1C1B19"
-borderColor = "#DDD7CA"
+primaryColor = "#0F766E"
+backgroundColor = "#F3F5F8"
+secondaryBackgroundColor = "#E9EEF4"
+textColor = "#0F172A"
+borderColor = "#E2E8F0"
 font = "sans serif"
 baseFontSize = 16
-baseRadius = "small"
+baseRadius = "medium"

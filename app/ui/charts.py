@@ -10,7 +10,7 @@ import pandas as pd
 from app.ui.common import is_number
 from datamind.render import format_value
 
-ACCENT, INK, MUTED, RULE = "#1F4E79", "#1C1B19", "#5C584F", "#BDB6A8"
+ACCENT, HIGHLIGHT, INK, MUTED, RULE = "#0F766E", "#0B1F3A", "#0F172A", "#475569", "#CBD5E1"
 TIME_HINTS = ("YEAR", "MONTH", "QUARTER", "WEEK", "DATE", "DAY")
 ID_HINTS = ("KEY", "_ID")
 MAX_BARS = 15
@@ -68,18 +68,23 @@ def build(columns: list[str], rows: list[list[Any]], money: set[str], height_per
         base = alt.Chart(frame, title=alt.TitleParams(title, anchor="start", color=INK, fontSize=14, fontWeight=600))
         y = alt.Y("x:N", sort="-x", title=None, axis=alt.Axis(labelLimit=220, ticks=False, domain=False))
         x = alt.X("y:Q", title=None, axis=None, scale=alt.Scale(zero=True))
-        bars = base.mark_bar(color=ACCENT, size=16, cornerRadiusEnd=4).encode(y=y, x=x, tooltip=tooltip)
+        hover = alt.selection_point(on="pointerover", fields=["x"], empty=False)
+        bars = base.mark_bar(size=16, cornerRadiusEnd=4).encode(
+            y=y, x=x, tooltip=tooltip, color=alt.condition(hover, alt.value(HIGHLIGHT), alt.value(ACCENT))).add_params(hover)
         labels = base.mark_text(align="left", dx=6, color=INK, fontSize=12).encode(y=y, x=x, text="label:N")
-        chart = (bars + labels).properties(height=height_per_bar * len(frame))
+        chart = (bars + labels).properties(height=height_per_bar * len(frame)).interactive(bind_y=False)
     else:
         title = f"{ycol} by {xcol}"
         x_type = "T" if isinstance(rows[0][xi], (date, datetime)) else "O"
         base = alt.Chart(frame, title=alt.TitleParams(title, anchor="start", color=INK, fontSize=14, fontWeight=600))
         x = alt.X(f"x:{x_type}", title=xcol, axis=alt.Axis(labelAngle=0))
         y = alt.Y("y:Q", title=None, axis=alt.Axis(labelExpr="replace(format(datum.value, '.3~s'), 'G', 'B')"))
-        line = base.mark_line(color=ACCENT, strokeWidth=2, point=alt.OverlayMarkDef(color=ACCENT, size=64, filled=True))
+        hover = alt.selection_point(on="pointerover", nearest=True, fields=["x"], empty=False)
+        line = base.mark_line(color=ACCENT, strokeWidth=2).encode(x=x, y=y)
+        points = base.mark_point(filled=True, color=ACCENT).encode(
+            x=x, y=y, tooltip=tooltip, size=alt.condition(hover, alt.value(150), alt.value(56))).add_params(hover)
         last = alt.Chart(frame.tail(1)).mark_text(align="left", dx=8, color=INK, fontSize=12)
-        chart = (line.encode(x=x, y=y, tooltip=tooltip) + last.encode(x=x, y=y, text="label:N")).properties(height=260)
+        chart = (line + points + last.encode(x=x, y=y, text="label:N")).properties(height=260).interactive()
     return (chart.configure_view(strokeWidth=0)
             .configure_axis(grid=False, domainColor=RULE, tickColor=RULE, labelColor=MUTED, titleColor=MUTED, labelFontSize=12)
             .properties(background="transparent"))

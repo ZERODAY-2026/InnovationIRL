@@ -90,7 +90,8 @@ def test_empty_state_and_data_tab(tpch, envs):
     assert not at.exception
     page = text(at)
     assert "No question asked yet" in page
-    assert "DATAMIND.TPCH.LINEITEM" in page and "25 rows" in page and "qid-count" in page
+    labels = " ".join(e.label for e in at.expander)
+    assert "DATAMIND.TPCH.LINEITEM · 25 rows" in labels and "qid-count" in page and "dm-hero" in page
 
 
 def test_happy_path_shows_answer_sql_and_query_id(tpch, envs):
