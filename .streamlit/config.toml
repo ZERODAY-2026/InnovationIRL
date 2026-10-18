@@ -1,2 +1,16 @@
 [browser]
 gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#1F4E79"
+backgroundColor = "#FAF8F3"
+secondaryBackgroundColor = "#F1EDE4"
+textColor = "#1C1B19"
+borderColor = "#DDD7CA"
+font = "sans serif"
+baseFontSize = 16
+baseRadius = "small"

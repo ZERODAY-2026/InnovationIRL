@@ -1,0 +1,26 @@
+/* One light theme: warm off-white, near-black text, one ink-blue accent. Status colours only for checks. */
+:root { --ink: #1C1B19; --muted: #5C584F; --rule: #DDD7CA; --accent: #1F4E79;
+        --ok: #2E6B3F; --warn: #8A5A00; --bad: #A32D2D; }
+[data-testid="stMainBlockContainer"], .block-container { max-width: 1040px; padding-top: 40px; padding-bottom: 64px; }
+[data-testid="stHeader"] { background: transparent; }
+code, pre, pre code { font-size: 13px !important; }
+h1 { font-size: 1.75rem !important; font-weight: 600 !important; letter-spacing: -0.01em; }
+h3 { font-size: 1.125rem !important; font-weight: 600 !important; margin-top: 24px !important; }
+.dm-sub, .dm-status, .dm-small { color: var(--muted); font-size: 0.875rem; }
+.dm-q { color: var(--muted); font-size: 0.875rem; margin: 24px 0 0; border-top: 1px solid var(--rule); padding-top: 16px; }
+.dm-answer { font-size: 1.5rem; line-height: 1.45; margin: 8px 0 16px; color: var(--ink); }
+.dm-answer b { font-weight: 600; }
+.dm-note { border-left: 2px solid var(--accent); padding: 4px 0 4px 12px; color: var(--ink); margin: 8px 0 16px; }
+.dm-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.9375rem; margin: 8px 0 16px; }
+.dm-table th { text-align: left; font-weight: 600; border-bottom: 1px solid var(--ink); padding: 6px 16px 6px 0; }
+.dm-table td { border-bottom: 1px solid var(--rule); padding: 6px 16px 6px 0; }
+.dm-table .num { text-align: right; }
+.dm-kv { margin: 0 0 8px; }
+.dm-kv dt { font-weight: 600; font-size: 0.875rem; margin-top: 8px; }
+.dm-kv dd { margin: 0; }
+.st-key-trace { border-left: 1px solid #BDB6A8; padding-left: 16px; margin-left: 4px; }
+.st-key-trace [data-testid="stExpander"] details { border-color: transparent; border-bottom: 1px solid var(--rule); border-radius: 0; }
+.dm-pass, .dm-warnflag, .dm-fail { font-weight: 600; }
+.dm-pass { color: var(--ok); } .dm-warnflag { color: var(--warn); } .dm-fail { color: var(--bad); }
+.dm-pass::before, .dm-warnflag::before, .dm-fail::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; background: currentColor; }
+:focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px; }
