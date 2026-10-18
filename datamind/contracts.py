@@ -98,6 +98,48 @@ class Receipt(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
 
 
+class InsightProposal(BaseModel):
+    """Gemma INSIGHTS output, step 1: a follow-up analysis as SQL."""
+
+    kind: Literal["trend", "share", "outlier", "comparison"]
+    title: str
+    sql: str
+
+
+class InsightProposals(BaseModel):
+    analyses: list[InsightProposal] = Field(default_factory=list)
+
+
+class InsightFinding(BaseModel):
+    index: int
+    finding: str = ""
+
+
+class InsightFindings(BaseModel):
+    """Gemma INSIGHTS output, step 2: one {{rN.COL}} sentence per executed analysis."""
+
+    findings: list[InsightFinding] = Field(default_factory=list)
+
+
+class Insight(BaseModel):
+    kind: str
+    title: str
+    sql: str
+    query_id: str | None = None
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
+    answer: RenderedAnswer | None = None
+    verified: bool = False
+    reason: str | None = None  # why it was dropped
+
+
+class InsightsReport(BaseModel):
+    shown: list[Insight] = Field(default_factory=list)
+    dropped: list[Insight] = Field(default_factory=list)
+    llm_calls: list[LLMCall] = Field(default_factory=list)
+    message: str | None = None
+
+
 class Envelope(BaseModel):
     """Everything the UI needs for one question."""
 

@@ -19,6 +19,8 @@ DATE_TOKEN = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
 NUMBER_TOKEN = re.compile(r"(?<![\w.])-?\d[\d,]*(?:\.\d+)?")
 MONEY_HINTS = ("REVENUE", "SALES", "PRICE", "COST", "PROFIT", "BALANCE", "ACCTBAL", "AMOUNT", "VALUE", "SPEND")
 PERCENT_HINTS = ("PCT", "PERCENT")
+PLAIN_INT_HINTS = ("YEAR", "KEY", "_ID", "CODE")
+PLAIN_INT_NAMES = {"Y", "YR", "ID"}
 
 
 def format_value(value: Any, column: str, money_columns: set[str] | frozenset[str] = frozenset()) -> str:
@@ -35,6 +37,9 @@ def format_value(value: Any, column: str, money_columns: set[str] | frozenset[st
         if number is None:
             return str(value)
         name = column.upper()
+        integral = number == number.to_integral_value()
+        if integral and (name in PLAIN_INT_NAMES or any(h in name for h in PLAIN_INT_HINTS)):
+            return str(int(number))  # years, keys and ids read wrong with separators ("1,998")
         if name in money_columns or any(h in name for h in MONEY_HINTS):
             return f"{number:,.2f}"
         if any(h in name for h in PERCENT_HINTS):

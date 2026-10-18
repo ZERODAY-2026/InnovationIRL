@@ -67,6 +67,8 @@ def test_formatting_has_no_float_noise():
     assert format_value(None, "X") == "no value"
     assert format_value(Decimal("12.5"), "LATE_PCT") == "12.50%"
     assert format_value(Decimal("-5.5"), "C_ACCTBAL", {"C_ACCTBAL"}) == "-5.50"
+    assert format_value(1998, "ORDER_YEAR") == "1998" and format_value(Decimal(1998), "Y") == "1998"
+    assert format_value(Decimal(1234567), "O_ORDERKEY") == "1234567"
 
 
 def test_empty_and_all_null_results():

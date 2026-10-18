@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from datamind.config import load_settings  # noqa: E402
 from datamind.contracts import Envelope  # noqa: E402
+from datamind.insights import dig_deeper  # noqa: E402
 from datamind.pipeline import DataMind  # noqa: E402
 from datamind.prompts import Turn  # noqa: E402
 from datamind.render import format_value  # noqa: E402
@@ -81,10 +82,31 @@ def show(env: Envelope, money: set[str]) -> None:
     if env.llm_calls:
         st.caption(" · ".join(f"Gemma {c.role}: {c.tier}/{c.model} {c.latency_ms} ms{' cached' if c.cached else ''}"
                               f"{' (backup tier)' if c.fallback_used else ''}" for c in env.llm_calls))
-    if env.status == "ANSWER" and env.execution and st.button("Re-run on live data", key=f"rerun-{id(env)}",
-                                                              help="Runs the same SQL again; no new plan"):
-        st.session_state.rerun_of = env
-        st.rerun()
+    if env.status == "ANSWER" and env.execution:
+        left, right = st.columns(2)
+        if left.button("Re-run on live data", key=f"rerun-{id(env)}", help="Runs the same SQL again; no new plan"):
+            st.session_state.rerun_of = env
+            st.rerun()
+        if right.button("Dig deeper (verified insights)", key=f"dig-{id(env)}",
+                        help="Up to 3 follow-up analyses; only findings backed by a Snowflake query are shown"):
+            with st.spinner("Proposing, checking and running follow-up analyses..."):
+                st.session_state.setdefault("insights", {})[id(env)] = dig_deeper(dm, env)
+    report = st.session_state.get("insights", {}).get(id(env))
+    if report is not None:
+        with st.container(border=True):
+            st.markdown("**Verified insights**")
+            for insight in report.shown:
+                st.markdown("- " + "".join(f"**{md_escape(s.text)}**" if s.row is not None else md_escape(s.text)
+                                           for s in insight.answer.segments))
+                with st.expander(f"Evidence: {insight.title} (query {insight.query_id})"):
+                    st.code(insight.sql, language="sql")
+                    st.dataframe(pd.DataFrame([[format_value(v, c, money) for c, v in zip(insight.columns, row)]
+                                               for row in insight.rows], columns=insight.columns))
+            if report.dropped:
+                st.caption(f"{len(report.dropped)} proposed analyses were not shown: "
+                           + "; ".join(f"{d.title}: {d.reason}" for d in report.dropped))
+            if report.message:
+                st.caption(report.message)
 
 
 st.title("DataMind: ask the data")
