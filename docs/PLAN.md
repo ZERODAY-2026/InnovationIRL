@@ -1,6 +1,6 @@
 # DataMind (PS1): plan and status
 
-Last updated 18 Oct 2026, 2:55 PM IST. Final deadline 6:00 PM IST.
+Last updated 18 Oct 2026, 3:25 PM IST. Final deadline 6:00 PM IST.
 
 ## Status: done / next
 Something is listed as done only after it has actually been run.
@@ -56,16 +56,32 @@ Something is listed as done only after it has actually been run.
   "Delete all orders from 1992" was refused as UNSAFE and never reached Snowflake.
 - Planning on 26B with thinking on took 8–32 s per question; the explain step with minimal thinking took 2–3 s.
 
-**Not working yet:**
-- No accuracy figure against independent gold SQL.
-- The Ollama backup is untested because `OLLAMA_HOST` is not set.
+**Phases 3–5 (as of 3:25 PM; 154 offline tests):**
+- **Phase 3 (measured on the development set only):**
+  - eval runner
+  - value hints
+  - out-of-coverage notes
+  - zero-row diagnosis backed by a probe query
+  - follow-ups
+  - type-mismatch and `SELECT *` guards
+  - run-time repair
 
-**Next:** Phase 3.
-- an eval runner against gold SQL
-- PLAN tier measurement: 26B against 31B, thinking on against minimal, with local E4B as a reference row
-- value anchoring
-- zero-row diagnosis
-- follow-ups
+  The development set scores 28/28, with 22/22 grounded answer texts. Tier decision: 26B with minimal thinking, now the default for every role. See `docs/EVAL.md`.
+- **Phase 4 (built):**
+  - re-run with a cell-level diff (CLI `ask --save` / `rerun`, UI button)
+  - `snowflake/demo_change.sql` and `demo_revert.sql`
+  - Snowflake query-history export
+  - the OWID profile, subset CSV and seed generator, added through configuration only
+- **Phase 5 (built):** Verified Insights. A live run showed 1 finding with its query ID, and dropped 2 unverifiable ones with reasons.
+
+**Waiting on a team action:**
+- Running `demo_change.sql` and the OWID seed SQL as `DATAMIND_ADMIN` (the app role is read-only).
+- Held-out set A.
+
+**Not working yet:**
+- No held-out score.
+- The Ollama backup is untested live.
+- No chart; the review UI is minimal, and the main UI belongs to the UI lane.
 
 ## Approach: compile, don't chat
 1. **Plan (Gemma).** One structured call returns:
