@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 ROLES = ("plan", "explain", "insights")
 PROVIDERS = ("gemini", "ollama")
 THINKING_MODES = ("default", "minimal")
-DEFAULT_THINKING = {"plan": "default", "explain": "minimal", "insights": "default"}
+# Measured on the dev set (docs/EVAL.md): thinking on was slower (timeouts past 60 s on multi-step questions)
+# without fixing anything minimal thinking got wrong, so every role defaults to minimal.
+DEFAULT_THINKING = {"plan": "minimal", "explain": "minimal", "insights": "minimal"}
 
 
 def _env(name: str, default: str = "") -> str:

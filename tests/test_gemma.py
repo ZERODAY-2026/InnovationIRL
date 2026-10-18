@@ -160,7 +160,7 @@ def test_no_tier_configured(tmp_path):
 
 def test_thinking_budget_per_role(tmp_path):
     rec = Recorder(gemini=[gemini_ok(), gemini_ok('{"ok": true, "word": "b"}')])
-    gemma = client(tmp_path, rec)
+    gemma = client(tmp_path, rec, gemini_thinking={"plan": "default", "explain": "minimal"})
     gemma.generate_json("plan", "S", "U1", Reply, max_output_tokens=700)
     gemma.generate_json("explain", "S", "U2", Reply, max_output_tokens=300)
     plan_cfg = json.loads(rec.requests[0].content)["generationConfig"]
