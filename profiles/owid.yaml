@@ -1,0 +1,76 @@
+# Semantic layer for Our World in Data CO2 and energy indicators (CC BY 4.0), loaded by scripts/owid_seed.py.
+# Second dataset: added through configuration only (this file plus seed SQL), no code changes.
+name: owid
+title: CO2 emissions and energy by country (Our World in Data)
+description: >-
+  Yearly CO2 emissions, energy use, population and GDP for countries and for aggregate regions, from 2000.
+  Rows with an empty ISO_CODE are aggregates such as World, continents or income groups. Many values are missing.
+snowflake:
+  database: DATAMIND
+  schema: OWID
+cloud_allowed: true      # public open data
+max_rows: 1000
+time_anchor: CO2.YEAR
+
+tables:
+  CO2:
+    description: One row per country or aggregate and year.
+    aliases: [emissions, emission, carbon, energy, countries, country]
+    columns:
+      COUNTRY: {type: text, desc: "name in title case, e.g. 'India', 'United States', 'World', 'Europe'", values: auto}
+      YEAR: {type: number}
+      ISO_CODE: {type: text, desc: "3-letter code; NULL for aggregates such as World or Asia"}
+      POPULATION: {type: number, desc: people}
+      GDP: {type: number, desc: "gross domestic product, international-$ (2011 prices); often missing"}
+      CO2: {type: number, desc: "annual CO2 from fossil fuels and industry, million tonnes"}
+      CO2_PER_CAPITA: {type: number, desc: tonnes of CO2 per person}
+      SHARE_GLOBAL_CO2: {type: number, desc: "share of global CO2 emissions, percent"}
+      COAL_CO2: {type: number, desc: "CO2 from coal, million tonnes"}
+      OIL_CO2: {type: number, desc: "CO2 from oil, million tonnes"}
+      GAS_CO2: {type: number, desc: "CO2 from gas, million tonnes"}
+      PRIMARY_ENERGY_CONSUMPTION: {type: number, desc: "primary energy use, terawatt-hours; often missing"}
+      ENERGY_PER_CAPITA: {type: number, desc: "kilowatt-hours per person; often missing"}
+
+joins: []
+
+metrics:
+  total_co2:
+    sql: SUM(CO2)
+    desc: "total CO2 in million tonnes (for countries, filter ISO_CODE IS NOT NULL)"
+    synonyms: [emissions, carbon emissions]
+
+synonyms:
+  nation: CO2.COUNTRY
+  emissions: CO2.CO2
+  carbon: CO2.CO2
+  per person: CO2.CO2_PER_CAPITA
+  energy use: CO2.PRIMARY_ENERGY_CONSUMPTION
+
+examples:
+  - question: Which 5 countries emitted the most CO2 in 2015?
+    plan:
+      status: ANSWER
+      standalone_question: Which 5 countries had the highest CO2 emissions in 2015?
+      assumptions:
+        - Countries only; aggregate rows such as World or Asia (no ISO code) are excluded.
+      sql: >-
+        SELECT COUNTRY, CO2 FROM CO2 WHERE YEAR = 2015 AND ISO_CODE IS NOT NULL
+        ORDER BY CO2 DESC NULLS LAST LIMIT 5
+  - question: How has the world's CO2 per person changed since 2000?
+    plan:
+      status: ANSWER
+      standalone_question: What was the world's CO2 per person in each year since 2000?
+      assumptions:
+        - The world total is the 'World' row.
+      sql: SELECT YEAR, CO2_PER_CAPITA FROM CO2 WHERE COUNTRY = 'World' ORDER BY YEAR
+  - question: Which country will emit the most in 2050?
+    plan:
+      status: UNSUPPORTED
+      standalone_question: Which country will emit the most CO2 in 2050?
+      reason: The data records past emissions only, so it cannot forecast 2050; recent trends can be shown instead.
+
+rules:
+  - Rows with ISO_CODE NULL are aggregates (World, continents, income groups, international transport). For questions about countries add ISO_CODE IS NOT NULL; for world totals use COUNTRY = 'World'.
+  - Many values are missing (NULL). Sums and averages skip NULLs, so say so in the assumptions when it matters.
+  - Snowflake sorts NULLs first in descending order, so rankings must use ORDER BY ... DESC NULLS LAST.
+  - Latest or most recent means the highest YEAR in the data, not the current year.

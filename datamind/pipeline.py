@@ -137,15 +137,20 @@ class DataMind:
         anchor = self.profile.time_anchor
         if not anchor or anchor not in self.profile.coverage:
             return ""
-        lo, hi = self.profile.coverage[anchor]
+        lo, hi = shown = self.profile.coverage[anchor]
+        table, column = anchor.split(".", 1)
+        numeric_anchor = self.profile.tables[table].columns[column].type == "number"
         try:
-            dates, years = period_filters(sql)
+            dates, years = period_filters(sql, year_column=column if numeric_anchor else None)
         except Exception:
             return ""
+        if numeric_anchor:  # coverage is stored as years, e.g. ("2000", "2023")
+            lo, hi = f"{lo}-01-01", f"{hi}-12-31"
         outside = [d for d in dates if d < lo or d > hi] + [str(y) for y in years if y < int(lo[:4]) or y > int(hi[:4])]
         if not outside:
             return ""
-        return f"Note: the data only covers {anchor} from {lo} to {hi}, so {', '.join(sorted(set(outside)))} is outside it."
+        return (f"Note: the data only covers {anchor} from {shown[0]} to {shown[1]}, "
+                f"so {', '.join(sorted(set(outside)))} is outside it.")
 
     def _answer(self, question: str, env: Envelope, allow_cloud: bool, model_answer: bool = True) -> RenderedAnswer:
         result = env.execution

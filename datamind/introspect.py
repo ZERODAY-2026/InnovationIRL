@@ -29,8 +29,11 @@ def introspect(profile: Profile, runner) -> dict:
     data: dict = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                   "coverage": {}, "values": {}, "query_ids": []}
     prefix = f"{_ident(profile.database)}.{_ident(profile.schema)}"
+    anchor = profile.time_anchor or ""
     for table in profile.tables.values():
-        dates = [c.name for c in table.columns.values() if c.type in ("date", "timestamp")]
+        # date columns, plus a numeric time anchor such as CO2.YEAR
+        dates = [c.name for c in table.columns.values()
+                 if c.type in ("date", "timestamp") or f"{table.name}.{c.name}" == anchor]
         if dates:
             parts = ", ".join(f"MIN({_ident(c)}), MAX({_ident(c)})" for c in dates)
             qid, rows = runner.run_unchecked(f"SELECT {parts} FROM {prefix}.{_ident(table.name)}")

@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, process
+from rapidfuzz.distance import DamerauLevenshtein
 
 from .config import ROOT
 
@@ -172,19 +173,28 @@ class Profile:
                 if column.hidden or not column.values:
                     continue
                 target = f"{table.name}.{column.name}"
-                if len(column.values) <= MAX_INLINE_VALUES:
-                    for value in column.values:
-                        if len(value) < 4 or value.lower() in lowered:
-                            continue  # exact values are already visible in the prompt
-                        for gram in grams:
-                            score = fuzz.ratio(gram.lower(), value.lower())
-                            if len(gram) >= 4 and score >= 88 and value not in seen:
-                                hints.append((int(score), f'"{gram}" probably means {target} = \'{value}\''))
-                                seen.add(value)
-                else:
-                    for word in {w.upper() for w in words if len(w) >= 4}:
+                inline = len(column.values) <= MAX_INLINE_VALUES
+                by_lower = {v.lower(): v for v in column.values}
+                exact = {g.lower() for g in grams if g.lower() in by_lower}
+                if not inline:  # long lists are not in the prompt: confirm exact names (e.g. 'United States')
+                    for g in sorted(exact, key=len, reverse=True)[:3]:
+                        hints.append((100, f"{target} = '{by_lower[g]}'"))
+                covered = " ".join(exact)
+                for gram in grams:  # likely typos, e.g. "Germny" -> 'GERMANY'
+                    g = gram.lower()
+                    if len(g) < 4 or g in exact or g in covered or g in lowered and g in by_lower:
+                        continue
+                    best = process.extractOne(g, list(by_lower), scorer=fuzz.ratio, score_cutoff=88)
+                    if best is None and len(g) >= 5:  # one swapped or wrong letter, e.g. "Indai" -> 'India'
+                        near = [v for v in by_lower if DamerauLevenshtein.distance(g, v) <= 1]
+                        best = (near[0], 85, 0) if len(near) == 1 else None
+                    if best and by_lower[best[0]].lower() not in lowered and by_lower[best[0]] not in seen:
+                        seen.add(by_lower[best[0]])
+                        hints.append((int(best[1]), f'"{gram}" probably means {target} = \'{by_lower[best[0]]}\''))
+                if not inline:  # words inside multi-word values, e.g. "brass" in P_TYPE
+                    for word in {w.upper() for w in words if len(w) >= 4 and w.lower() not in covered}:
                         matches = [v for v in column.values if word in re.split(r"[\s\-]+", v.upper())]
-                        if matches and (target, word) not in seen:
+                        if len(matches) >= 2 and (target, word) not in seen:
                             seen.add((target, word))  # type: ignore[arg-type]
                             examples = ", ".join(f"'{m}'" for m in matches[:3])
                             hints.append((90, f'"{word.lower()}" appears in {len(matches)} {target} values, e.g. {examples}; '

@@ -35,3 +35,8 @@ Thumbs.db
 
 # Generated from Snowflake at setup time
 profiles/cache/
+
+# Generated seed SQL (rebuild with scripts/owid_seed.py)
+snowflake/*.generated.sql
+# Eval progress logs
+eval/results/*.log

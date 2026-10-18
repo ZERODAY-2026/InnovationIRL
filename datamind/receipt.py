@@ -94,8 +94,11 @@ def zero_row_probe(sql: str, max_filters: int = 8) -> tuple[str, list[str]] | No
     return probe.sql(dialect="snowflake"), [_sql(f) for f in filters]
 
 
-def period_filters(sql: str) -> tuple[list[str], list[int]]:
-    """Date literals and YEAR(...) comparison values used in the executed SQL's filters."""
+def period_filters(sql: str, year_column: str | None = None) -> tuple[list[str], list[int]]:
+    """Date literals and year values used in the executed SQL's filters.
+
+    Years come from YEAR(...) comparisons and, if given, from comparisons with a numeric year column (e.g. YEAR).
+    """
     tree = sqlglot.parse_one(sql, read="snowflake")
     dates: list[str] = []
     years: list[int] = []
@@ -103,13 +106,22 @@ def period_filters(sql: str) -> tuple[list[str], list[int]]:
         for literal in clause.find_all(exp.Literal):
             if literal.is_string and _DATE.match(literal.name):
                 dates.append(literal.name)
+        def is_year(node: exp.Expression) -> bool:
+            if node.find(exp.Year) or (isinstance(node, exp.Extract) and node.name.upper() == "YEAR"):
+                return True
+            return bool(year_column) and isinstance(node, exp.Column) and node.name.upper() == year_column.upper()
+
         for comparison in clause.find_all(exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.NEQ):
             sides = (comparison.left, comparison.right)
-            if any(s.find(exp.Year) or (isinstance(s, exp.Extract) and s.name.upper() == "YEAR") for s in sides):
+            if any(is_year(s) for s in sides):
                 years += [int(s.name) for s in sides if isinstance(s, exp.Literal) and s.is_int]
         for in_list in clause.find_all(exp.In):
-            if in_list.this.find(exp.Year):
+            if is_year(in_list.this):
                 years += [int(v.name) for v in in_list.expressions if isinstance(v, exp.Literal) and v.is_int]
+        for between in clause.find_all(exp.Between):
+            if is_year(between.this):
+                years += [int(v.name) for v in (between.args.get("low"), between.args.get("high"))
+                          if isinstance(v, exp.Literal) and v.is_int]
     return dates, years
 
 
