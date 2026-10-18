@@ -19,6 +19,15 @@ DataMind turns an everyday-language question into a checked, read-only SQL query
 
 Design rules: Snowflake computes every number; Gemma plans and explains but never does arithmetic; a new dataset needs configuration (a YAML profile and setup SQL), not new code.
 
+## Dashboard
+
+Run `.venv\Scripts\python -m streamlit run app/main.py` (after the setup below). `app/slice_view.py` is a minimal fallback view.
+
+- **Ask tab.** Type a question (Ctrl+Enter) or pick an example. A live stepper (Understand, Plan, Check, Run in Snowflake, Explain) updates as each real step finishes and shows what it produced: the interpreted question, the SQL, the checks, the query ID. The answer comes first, then the result rows, a chart when the shape fits, and the full trace. Refusals, clarifying questions, empty results and errors show which step stopped and why.
+- **Run again on current data** re-runs the same SQL and lists cell-level changes with both query IDs. **Dig deeper** shows follow-up findings, each backed by its own Snowflake query.
+- **Data tab.** Where the data lives: each `DATABASE.SCHEMA.TABLE`, its purpose, live row count, columns and types, 5 sample rows, the allowed join paths and the data coverage.
+- Rubric self-check with evidence and open gaps: [`docs/RUBRIC.md`](docs/RUBRIC.md).
+
 ## Technology
 
 - **Snowflake:** storage, query execution and access control.
@@ -51,9 +60,11 @@ docs/        architecture, evaluation results, evidence
 - [x] Phase 1: foundations (contracts, profile loader, SQL gate, Snowflake executor, Gemma client, tests). Verified live by the smoke test.
 - [x] Phase 2: vertical slice (question to evidence-backed answer). Verified live on 5 questions, plus a refused write request.
 - [x] Phase 3: ambiguity and missing-data handling, follow-ups, evaluation harness. Measured on the development set; the held-out run is pending.
-- [ ] Phase 4: live data-change demo and second dataset. Built (re-run with diff, change scripts, OWID profile and seed); the live run is pending.
-- [ ] Phase 5: optional verified insights. Built and tested offline; the live run is pending.
-- [ ] Phase 6: documentation, held-out evaluation, demo recording
+- [x] Phase 4a: live data-change demo. Verified: the answer changed across two query IDs and returned to the baseline after the revert (`docs/PLAN.md`).
+- [ ] Phase 4b: second dataset (OWID). Profile, subset and seed generator built and tested offline; the seed has not been loaded into Snowflake yet, so it is not run live.
+- [x] Phase 5: verified insights ("Dig deeper"). Tested offline and run live once from the dashboard.
+- [x] Dashboard: `app/main.py` with a live 5-step stepper, trace, shape-chosen chart, re-run diff and a Data tab.
+- [ ] Phase 6: documentation (done: README, `docs/EVAL.md`, `docs/RUBRIC.md`); held-out evaluation and demo recording are pending
 
 ## Evaluation
 
