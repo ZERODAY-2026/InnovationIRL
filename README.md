@@ -22,7 +22,7 @@ Design rules: Snowflake computes every number; Gemma plans and explains but neve
 ## Technology
 
 - **Snowflake:** storage, query execution and access control.
-- **Google Gemma 4:** runs locally through Ollama by default (no API key needed); an optional cloud tier uses Gemma through the Gemini API, with automatic fallback to local.
+- **Google Gemma 4:** Gemma through the Gemini API (`gemma-4-26b-a4b-it`) is the primary tier. Gemma 4 E4B on Ollama (local or LAN) is the backup, used automatically on rate limits, timeouts or connection errors. A no-key setup runs entirely on Ollama.
 - **Python:** snowflake-connector-python, sqlglot, pydantic, rapidfuzz, streamlit.
 
 ## Datasets and licences
