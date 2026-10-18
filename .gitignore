@@ -32,3 +32,6 @@ data/raw/
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+
+# Generated from Snowflake at setup time
+profiles/cache/

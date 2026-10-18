@@ -1,0 +1,184 @@
+# Semantic layer for TPC-H SF1 (copied inside our Snowflake account from SNOWFLAKE_SAMPLE_DATA.TPCH_SF1).
+# No data rows live in this file: only the schema, the value domains from the public TPC-H
+# specification, join paths, metric definitions and interpretation rules.
+name: tpch
+title: TPC-H wholesale orders (benchmark data)
+description: >-
+  A wholesale supplier: customers in 25 nations place orders; each order has line items for
+  parts bought from suppliers. Orders run from 1992 to mid-1998.
+snowflake:
+  database: DATAMIND
+  schema: TPCH
+cloud_allowed: true      # synthetic benchmark data: safe to show to the cloud Gemma tier
+max_rows: 1000
+time_anchor: ORDERS.O_ORDERDATE
+
+tables:
+  REGION:
+    description: 5 world regions.
+    aliases: [continent]
+    columns:
+      R_REGIONKEY: {type: number}
+      R_NAME: {type: text, values: [AFRICA, AMERICA, ASIA, EUROPE, MIDDLE EAST]}
+      R_COMMENT: {type: text, hidden: true}
+  NATION:
+    description: 25 nations (countries), each in one region.
+    aliases: [country, countries]
+    columns:
+      N_NATIONKEY: {type: number}
+      N_NAME:
+        type: text
+        values: [ALGERIA, ARGENTINA, BRAZIL, CANADA, CHINA, EGYPT, ETHIOPIA, FRANCE, GERMANY, INDIA,
+                 INDONESIA, IRAN, IRAQ, JAPAN, JORDAN, KENYA, MOROCCO, MOZAMBIQUE, PERU, ROMANIA,
+                 RUSSIA, SAUDI ARABIA, UNITED KINGDOM, UNITED STATES, VIETNAM]
+      N_REGIONKEY: {type: number}
+      N_COMMENT: {type: text, hidden: true}
+  CUSTOMER:
+    description: Customers (buyers), each located in one nation.
+    aliases: [client, buyer]
+    columns:
+      C_CUSTKEY: {type: number}
+      C_NAME: {type: text, desc: "e.g. Customer#000000001"}
+      C_ADDRESS: {type: text, hidden: true}
+      C_NATIONKEY: {type: number}
+      C_PHONE: {type: text, hidden: true}
+      C_ACCTBAL: {type: number, format: money, desc: account balance (can be negative)}
+      C_MKTSEGMENT: {type: text, desc: market segment, values: [AUTOMOBILE, BUILDING, FURNITURE, HOUSEHOLD, MACHINERY]}
+      C_COMMENT: {type: text, hidden: true}
+  SUPPLIER:
+    description: Suppliers (vendors), each located in one nation.
+    aliases: [vendor]
+    columns:
+      S_SUPPKEY: {type: number}
+      S_NAME: {type: text, desc: "e.g. Supplier#000000001"}
+      S_ADDRESS: {type: text, hidden: true}
+      S_NATIONKEY: {type: number}
+      S_PHONE: {type: text, hidden: true}
+      S_ACCTBAL: {type: number, format: money, desc: account balance}
+      S_COMMENT: {type: text, hidden: true}
+  PART:
+    description: Parts (products) sold.
+    aliases: [product, products, item]
+    columns:
+      P_PARTKEY: {type: number}
+      P_NAME: {type: text, desc: words describing the part}
+      P_MFGR: {type: text, desc: "manufacturer, 'Manufacturer#1' to 'Manufacturer#5'"}
+      P_BRAND: {type: text, desc: "'Brand#MN', M and N from 1 to 5, e.g. 'Brand#23'"}
+      P_TYPE: {type: text, desc: "3 words, e.g. 'STANDARD POLISHED TIN', 'PROMO BRUSHED COPPER'", values: auto}
+      P_SIZE: {type: number, desc: 1 to 50}
+      P_CONTAINER: {type: text, desc: "size + kind, e.g. 'SM CASE', 'LG BOX', 'MED BAG', 'JUMBO PKG', 'WRAP JAR'", values: auto}
+      P_RETAILPRICE: {type: number, format: money}
+      P_COMMENT: {type: text, hidden: true}
+  PARTSUPP:
+    description: Which supplier offers which part, with stock and cost.
+    aliases: [supply cost, stock, inventory, available quantity]
+    columns:
+      PS_PARTKEY: {type: number}
+      PS_SUPPKEY: {type: number}
+      PS_AVAILQTY: {type: number, desc: units available}
+      PS_SUPPLYCOST: {type: number, format: money, desc: cost per unit from this supplier}
+      PS_COMMENT: {type: text, hidden: true}
+  ORDERS:
+    description: One row per customer order.
+    aliases: [order]
+    columns:
+      O_ORDERKEY: {type: number}
+      O_CUSTKEY: {type: number}
+      O_ORDERSTATUS: {type: text, desc: "F = fulfilled, O = open, P = partially shipped", values: [F, O, P]}
+      O_TOTALPRICE: {type: number, format: money, desc: order total incl. tax after discount}
+      O_ORDERDATE: {type: date, desc: date the order was placed}
+      O_ORDERPRIORITY: {type: text, values: [1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED, 5-LOW]}
+      O_CLERK: {type: text, desc: "e.g. Clerk#000000951"}
+      O_SHIPPRIORITY: {type: number, desc: always 0}
+      O_COMMENT: {type: text, hidden: true}
+  LINEITEM:
+    description: Order lines (one part from one supplier in one order). Largest table, 6M rows.
+    aliases: [line item, line items, shipping, shipped, delivery, discount, returned, late]
+    columns:
+      L_ORDERKEY: {type: number}
+      L_PARTKEY: {type: number}
+      L_SUPPKEY: {type: number}
+      L_LINENUMBER: {type: number}
+      L_QUANTITY: {type: number, desc: units, 1 to 50}
+      L_EXTENDEDPRICE: {type: number, format: money, desc: quantity x part price, before discount}
+      L_DISCOUNT: {type: number, desc: "fraction 0.00 to 0.10"}
+      L_TAX: {type: number, desc: "fraction 0.00 to 0.08"}
+      L_RETURNFLAG: {type: text, desc: "R = returned, A = accepted, N = not yet known", values: [A, N, R]}
+      L_LINESTATUS: {type: text, desc: "F = shipped, O = open", values: [F, O]}
+      L_SHIPDATE: {type: date}
+      L_COMMITDATE: {type: date, desc: promised delivery date}
+      L_RECEIPTDATE: {type: date, desc: actual delivery date}
+      L_SHIPINSTRUCT: {type: text, values: [COLLECT COD, DELIVER IN PERSON, NONE, TAKE BACK RETURN]}
+      L_SHIPMODE: {type: text, desc: shipping method, values: [AIR, FOB, MAIL, RAIL, REG AIR, SHIP, TRUCK]}
+      L_COMMENT: {type: text, hidden: true}
+
+# Declared relationships. A composite join is written with AND.
+joins:
+  - LINEITEM.L_ORDERKEY = ORDERS.O_ORDERKEY
+  - ORDERS.O_CUSTKEY = CUSTOMER.C_CUSTKEY
+  - CUSTOMER.C_NATIONKEY = NATION.N_NATIONKEY
+  - SUPPLIER.S_NATIONKEY = NATION.N_NATIONKEY
+  - NATION.N_REGIONKEY = REGION.R_REGIONKEY
+  - LINEITEM.L_PARTKEY = PART.P_PARTKEY
+  - LINEITEM.L_SUPPKEY = SUPPLIER.S_SUPPKEY
+  - PARTSUPP.PS_PARTKEY = PART.P_PARTKEY
+  - PARTSUPP.PS_SUPPKEY = SUPPLIER.S_SUPPKEY
+  - LINEITEM.L_PARTKEY = PARTSUPP.PS_PARTKEY AND LINEITEM.L_SUPPKEY = PARTSUPP.PS_SUPPKEY
+
+# Preferred routes when a prompt is shrunk to the relevant tables (sales geography = the customer's nation).
+default_paths:
+  - [LINEITEM, ORDERS, CUSTOMER, NATION, REGION]
+
+metrics:
+  revenue:
+    sql: SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))
+    desc: net revenue after discount (the TPC-H standard)
+    synonyms: [sales, turnover, income, sales value]
+    format: money
+  gross_sales:
+    sql: SUM(L_EXTENDEDPRICE)
+    desc: list value before discount
+    format: money
+  charged_amount:
+    sql: SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT) * (1 + L_TAX))
+    desc: amount charged including tax
+    format: money
+  profit:
+    sql: SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT) - PS_SUPPLYCOST * L_QUANTITY)
+    desc: revenue minus supply cost; needs LINEITEM joined to PARTSUPP on part and supplier
+    synonyms: [margin]
+    format: money
+  order_value:
+    sql: SUM(O_TOTALPRICE)
+    desc: sum of order totals as recorded on ORDERS
+    format: money
+  order_count:
+    sql: COUNT(DISTINCT O_ORDERKEY)
+    synonyms: [number of orders]
+  units:
+    sql: SUM(L_QUANTITY)
+    synonyms: [quantity, volume]
+
+synonyms:
+  country: NATION.N_NAME
+  nation: NATION.N_NAME
+  region: REGION.R_NAME
+  continent: REGION.R_NAME
+  segment: CUSTOMER.C_MKTSEGMENT
+  industry: CUSTOMER.C_MKTSEGMENT
+  priority: ORDERS.O_ORDERPRIORITY
+  ship mode: LINEITEM.L_SHIPMODE
+  shipping method: LINEITEM.L_SHIPMODE
+  brand: PART.P_BRAND
+  manufacturer: PART.P_MFGR
+  product: PART.P_NAME
+  vendor: SUPPLIER.S_NAME
+  client: CUSTOMER.C_NAME
+  buyer: CUSTOMER.C_NAME
+
+rules:
+  - Revenue or sales means SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT)) over LINEITEM unless the user asks for order totals (O_TOTALPRICE).
+  - A nation or region for orders, sales or customers is the customer's (CUSTOMER.C_NATIONKEY). Use the supplier's nation only when the question is about suppliers. State this as an assumption.
+  - The default date is the order date (O_ORDERDATE). Use L_SHIPDATE or L_RECEIPTDATE only for shipping or delivery questions.
+  - Relative periods such as "last year" or "recently" are relative to the latest date in the data, not today. State this as an assumption.
+  - A late line item has L_RECEIPTDATE > L_COMMITDATE. A returned line item has L_RETURNFLAG = 'R'.

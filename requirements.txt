@@ -1,0 +1,13 @@
+# Top-level dependencies, pinned. Full transitive pins: requirements-lock.txt
+# Tested on Windows 11, Python 3.13.5.
+snowflake-connector-python==5.0.0
+sqlglot==30.23.0
+pydantic==2.14.1
+streamlit==1.66.0
+httpx==0.28.1
+PyYAML==6.0.3
+python-dotenv==1.2.4
+pytest==9.1.1
+RapidFuzz==3.14.6
+cryptography==50.0.2
+pandas==3.0.6

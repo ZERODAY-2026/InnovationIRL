@@ -1,0 +1,12 @@
+[project]
+name = "datamind"
+version = "0.1.0"
+description = "Ask questions in plain language; Gemma plans the SQL, Snowflake computes the answer, and every value links to its evidence."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
