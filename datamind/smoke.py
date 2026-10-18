@@ -38,27 +38,30 @@ def check_gemini(settings, models: list[str]) -> bool:
     tier = GeminiTier(settings.gemini_api_key, settings.cache_dir / "gemini_caps.json")
     all_ok = True
     for model in models:
-        t0 = time.perf_counter()
-        try:
-            raw = tier.generate(model, SYSTEM, USER, 64)
-        except FallbackableError as exc:
-            print(f"Gemini {model}: UNAVAILABLE ({exc})")
-            all_ok = False
-            continue
-        except ModelError as exc:
-            print(f"Gemini {model}: ERROR ({exc})")
-            all_ok = False
-            continue
-        ms = int((time.perf_counter() - t0) * 1000)
-        caps = tier.capabilities(model)
-        valid = _valid(raw.text)
-        all_ok &= valid == "yes"
-        print(
-            f"Gemini {model}: OK {ms} ms (incl. capability retries) | system instruction: "
-            f"{'yes' if caps['system_instruction'] else 'no (inlined)'} | JSON mode: "
-            f"{'yes' if caps['json_mode'] else 'no (pydantic only)'} | schema-valid JSON: {valid} | "
-            f"tokens in/out: {raw.prompt_tokens}/{raw.output_tokens}"
-        )
+        for thinking in ("default", "minimal"):
+            t0 = time.perf_counter()
+            try:
+                raw = tier.generate(model, SYSTEM, USER, 64, thinking=thinking)
+            except FallbackableError as exc:
+                print(f"Gemini {model} [thinking={thinking}]: UNAVAILABLE ({exc})")
+                all_ok = False
+                continue
+            except ModelError as exc:
+                print(f"Gemini {model} [thinking={thinking}]: ERROR ({exc})")
+                all_ok = False
+                continue
+            ms = int((time.perf_counter() - t0) * 1000)
+            caps = tier.capabilities(model)
+            valid = _valid(raw.text)
+            all_ok &= valid == "yes"
+            minimal = "" if thinking == "default" else (
+                " | minimal thinking: " + ("supported" if caps["thinking_level"] else "NOT supported (model always thinks)"))
+            print(
+                f"Gemini {model} [thinking={thinking}]: OK {ms} ms | system instruction: "
+                f"{'yes' if caps['system_instruction'] else 'no (inlined)'} | JSON mode: "
+                f"{'yes' if caps['json_mode'] else 'no (pydantic only)'} | schema-valid JSON: {valid} | "
+                f"tokens in/out: {raw.prompt_tokens}/{raw.output_tokens} | {raw.note}{minimal}"
+            )
     print("Gemini quota: the API reports limits only on a 429; see the AI Studio rate-limit page for the account's quota.")
     return all_ok
 

@@ -25,6 +25,9 @@ from .contracts import LLMCall
 T = TypeVar("T", bound=BaseModel)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 PROMPT_OVERHEAD_TOKENS = 32
+# Gemma 4 on the Gemini API thinks by default and thought tokens count against maxOutputTokens.
+THINKING_ALLOWANCE_TOKENS = 3072
+_DEFAULT_CAPS = {"system_instruction": True, "json_mode": True, "thinking_level": True}
 
 
 class ModelError(RuntimeError):
@@ -75,16 +78,18 @@ class GeminiTier:
         self._sleep = sleep
 
     def capabilities(self, model: str) -> dict[str, bool]:
-        return dict(self._caps.get(model, {"system_instruction": True, "json_mode": True}))
+        return {**_DEFAULT_CAPS, **self._caps.get(model, {})}
 
-    def generate(self, model: str, system: str, user: str, max_output_tokens: int) -> RawReply:
+    def generate(self, model: str, system: str, user: str, max_output_tokens: int,
+                 thinking: str = "default") -> RawReply:
+        """thinking="minimal" asks the model not to think (if it supports thinkingLevel); "default" lets it think."""
         caps = self.capabilities(model)
         rate_retries = server_retries = 0
         while True:
             try:
                 resp = self._client.post(
                     GEMINI_URL.format(model=model),
-                    json=self._body(system, user, max_output_tokens, caps),
+                    json=self._body(system, user, max_output_tokens, caps, thinking),
                     headers={"x-goog-api-key": self._key},
                 )
             except httpx.TimeoutException as exc:
@@ -104,6 +109,9 @@ class GeminiTier:
             if resp.status_code == 400 and caps["json_mode"] and ("json" in low or "mime" in low):
                 caps["json_mode"] = False  # validate with pydantic instead
                 continue
+            if resp.status_code == 400 and caps["thinking_level"] and thinking == "minimal" and "thinking" in low:
+                caps["thinking_level"] = False  # model always thinks: keep the larger output budget
+                continue
             if resp.status_code == 429:
                 if rate_retries < 2:
                     rate_retries += 1
@@ -118,16 +126,20 @@ class GeminiTier:
             raise ModelError(f"Gemini HTTP {resp.status_code} ({model}): {message}")
 
     @staticmethod
-    def _body(system: str, user: str, max_output_tokens: int, caps: dict[str, bool]) -> dict[str, Any]:
+    def _body(system: str, user: str, max_output_tokens: int, caps: dict[str, bool], thinking: str) -> dict[str, Any]:
         text = user if caps["system_instruction"] else f"{system}\n\n{user}"
-        body: dict[str, Any] = {
-            "contents": [{"role": "user", "parts": [{"text": text}]}],
-            "generationConfig": {"temperature": 0, "maxOutputTokens": max_output_tokens},
+        no_thinking = thinking == "minimal" and caps["thinking_level"]
+        config: dict[str, Any] = {
+            "temperature": 0,
+            "maxOutputTokens": max_output_tokens + (0 if no_thinking else THINKING_ALLOWANCE_TOKENS),
         }
+        if no_thinking:
+            config["thinkingConfig"] = {"thinkingLevel": "minimal"}
+        if caps["json_mode"]:
+            config["responseMimeType"] = "application/json"
+        body: dict[str, Any] = {"contents": [{"role": "user", "parts": [{"text": text}]}], "generationConfig": config}
         if caps["system_instruction"]:
             body["systemInstruction"] = {"parts": [{"text": system}]}
-        if caps["json_mode"]:
-            body["generationConfig"]["responseMimeType"] = "application/json"
         return body
 
     @staticmethod
@@ -138,9 +150,12 @@ class GeminiTier:
         parts = (candidates[0].get("content") or {}).get("parts") or []
         text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
         usage = data.get("usageMetadata") or {}
-        flags = f"system_instruction={'yes' if caps['system_instruction'] else 'no'}, json_mode={'yes' if caps['json_mode'] else 'no'}"
-        return RawReply(text, model, "gemini", usage.get("promptTokenCount"), usage.get("candidatesTokenCount"),
-                        f"{candidates[0].get('finishReason', '')}; {flags}".strip("; "))
+        finish = candidates[0].get("finishReason", "")
+        if not text.strip():
+            raise ModelError(f"Gemini returned no visible text ({model}, finish={finish}, "
+                             f"thought tokens={usage.get('thoughtsTokenCount')})")
+        note = f"{finish}; thought tokens={usage.get('thoughtsTokenCount', 0)}"
+        return RawReply(text, model, "gemini", usage.get("promptTokenCount"), usage.get("candidatesTokenCount"), note)
 
     def _load_caps(self) -> dict[str, dict[str, bool]]:
         try:
@@ -160,6 +175,7 @@ class OllamaTier:
                  transport: httpx.BaseTransport | None = None):
         self.host, self.model, self.num_ctx = host.rstrip("/"), model, num_ctx
         self._client = httpx.Client(timeout=timeout_s, transport=transport)
+        self._send_think = True  # ask for no thinking: thought tokens would eat the small local context
 
     def fits(self, system: str, user: str, max_output_tokens: int) -> bool:
         return self._needed(system, user) + max_output_tokens <= self.num_ctx
@@ -174,7 +190,7 @@ class OllamaTier:
                 f"prompt needs about {needed} tokens plus {max_output_tokens} for the reply, "
                 f"but OLLAMA_NUM_CTX is {self.num_ctx}"
             )
-        body = {
+        body: dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "stream": False,
@@ -182,12 +198,21 @@ class OllamaTier:
             "options": {"num_ctx": self.num_ctx, "temperature": 0, "num_predict": max_output_tokens},
             "keep_alive": "10m",
         }
-        try:
-            resp = self._client.post(f"{self.host}/api/chat", json=body)
-        except httpx.TimeoutException as exc:
-            raise FallbackableError(f"Ollama timed out at {self.host}") from exc
-        except httpx.TransportError as exc:
-            raise FallbackableError(f"Ollama unreachable at {self.host}: {type(exc).__name__}") from exc
+        while True:
+            if self._send_think:
+                body["think"] = False
+            else:
+                body.pop("think", None)
+            try:
+                resp = self._client.post(f"{self.host}/api/chat", json=body)
+            except httpx.TimeoutException as exc:
+                raise FallbackableError(f"Ollama timed out at {self.host}") from exc
+            except httpx.TransportError as exc:
+                raise FallbackableError(f"Ollama unreachable at {self.host}: {type(exc).__name__}") from exc
+            if resp.status_code == 400 and self._send_think and "think" in resp.text.lower():
+                self._send_think = False  # this model/runtime does not accept the think flag
+                continue
+            break
         if resp.status_code != 200:
             raise ModelError(f"Ollama HTTP {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
@@ -259,7 +284,8 @@ class GemmaClient:
             model = self.settings.gemini_model_for(role)
             user = levels[0]
         estimate = estimate_tokens(system) + estimate_tokens(user)
-        key = _cache_key(tier_name, model, role, system, user, schema)
+        variant = model if tier_name == "ollama" else f"{model}|thinking={self.settings.gemini_thinking_for(role)}"
+        key = _cache_key(tier_name, variant, role, system, user, schema)
         cached = self._cache_get(key)
         if cached is not None:
             try:
@@ -275,7 +301,8 @@ class GemmaClient:
                 if isinstance(tier, OllamaTier):
                     raw = tier.generate(system, prompt, max_output_tokens, schema.model_json_schema())
                 else:
-                    raw = tier.generate(model, system, prompt, max_output_tokens)
+                    raw = tier.generate(model, system, prompt, max_output_tokens,
+                                        thinking=self.settings.gemini_thinking_for(role))
             try:
                 result = schema.model_validate(extract_json(raw.text))
                 break

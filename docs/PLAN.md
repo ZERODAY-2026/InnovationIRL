@@ -1,6 +1,6 @@
 # DataMind (PS1): plan and status
 
-Last updated 18 Oct 2026, 2:00 PM IST. Final deadline 6:00 PM IST.
+Last updated 18 Oct 2026, 2:55 PM IST. Final deadline 6:00 PM IST.
 
 ## Status: done / next
 Something is listed as done only after it has actually been run.
@@ -31,24 +31,41 @@ Something is listed as done only after it has actually been run.
 - Introspection.
 - README setup for both Gemma paths.
 
-**Written but not yet run against live services:**
-- the Snowflake runner
-- `snowflake/setup.sql`
-- `scripts/gen_keypair.py`
-- the smoke test
-- introspection
+**Live checks (run 18 Oct, 14:40–14:55 IST; 112 offline tests now)**
+- Smoke test passed. The app connects as `DATAMIND_READER` on `DATAMIND_WH` (query `01c7cf2a-000e-16cf-0002-b98a0001603e`).
+  - A DELETE as the app role is denied: insufficient privileges.
+  - `SNOWFLAKE_SAMPLE_DATA` is not visible to the app.
+- Gemma via the Gemini API returns schema-valid JSON on both model IDs, with system instructions and JSON mode supported. Gemma 4 thinks by default; `thinkingLevel: minimal` turns that off. Latency for a 1-line prompt:
 
-**Blocked:**
-- The live Gemini check is waiting for `GEMINI_API_KEY` in `InnovationIRL/.env`.
-- The Snowflake check is waiting for `setup.sql` and a registered key.
+  | Model | Thinking on | Minimal thinking |
+  |---|---|---|
+  | `gemma-4-26b-a4b-it` | 12.5 s | 1.1 s |
+  | `gemma-4-31b-it` | 61 s | 23 s |
+
+- Introspection cached the date coverage. Orders run from 1992-01-01 to 1998-08-02.
+- Phase 2 exit test passed. Five questions were answered end to end from Snowflake with grounded values:
+
+  | Question | Query ID |
+  |---|---|
+  | Top 5 nations by revenue in 1995 | `01c7cf2b-000e-1619-0000-0002b98ad319` |
+  | Orders per priority | `01c7cf2c-000e-1673-0000-0002b98ac33d` |
+  | Average discount per ship mode | `01c7cf2c-000e-16cf-0002-b98a00016056` |
+  | Top 3 AUTOMOBILE customers by balance | `01c7cf2d-000e-16d0-0002-b98a00015136` |
+  | Share of late line items shipped in 1997 | `01c7cf2d-000e-16d0-0002-b98a00015156` |
+
+  "Delete all orders from 1992" was refused as UNSAFE and never reached Snowflake.
+- Planning on 26B with thinking on took 8–32 s per question; the explain step with minimal thinking took 2–3 s.
 
 **Not working yet:**
-- No live end-to-end answer has been produced.
-- No accuracy figures.
+- No accuracy figure against independent gold SQL.
+- The Ollama backup is untested because `OLLAMA_HOST` is not set.
 
-**Next:**
-1. Phase 2 exit test once credentials exist: smoke test, then 5 dev questions end to end with query IDs, plus a DML refusal.
-2. Phase 3: eval runner and tier measurement.
+**Next:** Phase 3.
+- an eval runner against gold SQL
+- PLAN tier measurement: 26B against 31B, thinking on against minimal, with local E4B as a reference row
+- value anchoring
+- zero-row diagnosis
+- follow-ups
 
 ## Approach: compile, don't chat
 1. **Plan (Gemma).** One structured call returns:

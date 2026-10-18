@@ -75,6 +75,19 @@ def test_empty_and_all_null_results():
     assert is_empty(nulls) and "No data matched" in deterministic_answer(nulls).text
 
 
+def test_typed_names_and_unique_values_are_linked_to_cells():
+    ans = render_answer("The top nations were GERMANY and FRANCE; GERMANY had 1,234,567.89.", TOP5, Q, MONEY)
+    assert not ans.fallback_used and ans.text == "The top nations were GERMANY and FRANCE; GERMANY had 1,234,567.89."
+    assert [(s.text, s.row, s.column) for s in ans.segments if s.row is not None] == [
+        ("GERMANY", 0, "NATION"), ("FRANCE", 1, "NATION"), ("GERMANY", 0, "NATION"), ("1,234,567.89", 0, "REVENUE")]
+
+
+def test_repeated_values_are_not_linked_to_a_guessed_cell():
+    shares = result(["SHIP_MODE", "AVG_DISCOUNT"], [["AIR", Decimal("0.05")], ["SHIP", Decimal("0.05")]])
+    ans = render_answer("SHIP averages 0.05.", shares, "Average discount by ship mode?")
+    assert [(s.text, s.row) for s in ans.segments if s.row is not None] == [("SHIP", 1)]
+
+
 def test_fallback_for_many_rows_points_at_cells():
     ans = deterministic_answer(TOP5, MONEY)
     assert ans.text.startswith("5 rows. First row: NATION = GERMANY; REVENUE = 1,234,567.89")

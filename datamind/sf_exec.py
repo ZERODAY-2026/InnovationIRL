@@ -63,6 +63,7 @@ class SnowflakeRunner:
             schema=self.schema,
             application="DataMind",
             login_timeout=30,
+            enable_server_session_keep_alive_auto_detection=False,  # no async queries: always log out on close
         )
         if s.snowflake_private_key_passphrase:
             params["private_key_password"] = s.snowflake_private_key_passphrase

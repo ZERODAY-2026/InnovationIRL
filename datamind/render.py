@@ -79,7 +79,41 @@ def render_answer(template: str, result: ExecutionResult, question: str,
     rejected = _unsupported_numbers(prose, result, question, money_columns, audit_numbers, audit_dates)
     if problems or rejected or not template.strip():
         return deterministic_answer(result, money_columns, rejected=[*problems, *rejected])
-    return RenderedAnswer(segments=segments, grounded=True)
+    return RenderedAnswer(segments=_link_literals(segments, result, money_columns), grounded=True)
+
+
+def _link_literals(segments: list[Segment], result: ExecutionResult, money_columns) -> list[Segment]:
+    """Link values the model typed as plain text (e.g. a nation name) to their cell, when exactly one cell matches."""
+    occurrences: dict[str, list[tuple[int, str]]] = {}
+    for r, row in enumerate(result.rows[:200]):
+        for column, value in zip(result.columns, row):
+            if value is None or isinstance(value, bool):
+                continue
+            texts = {format_value(value, column, money_columns)}
+            if isinstance(value, str):
+                texts.add(value)
+            for text in texts:
+                if len(text) >= 3 or any(ch.isdigit() for ch in text):
+                    occurrences.setdefault(text, []).append((r, column))
+    unique = {text: cells[0] for text, cells in occurrences.items() if len({c for c in cells}) == 1}
+    if not unique:
+        return segments
+    pattern = re.compile("|".join(rf"(?<![\w.,]){re.escape(t)}(?![\w]|[.,]\d)" for t in sorted(unique, key=len, reverse=True)))
+    linked: list[Segment] = []
+    for segment in segments:
+        if segment.row is not None or segment.column is not None:
+            linked.append(segment)
+            continue
+        position = 0
+        for match in pattern.finditer(segment.text):
+            if match.start() > position:
+                linked.append(Segment(text=segment.text[position:match.start()]))
+            row, column = unique[match.group(0)]
+            linked.append(Segment(text=match.group(0), row=row, column=column))
+            position = match.end()
+        if position < len(segment.text):
+            linked.append(Segment(text=segment.text[position:]))
+    return linked
 
 
 def deterministic_answer(result: ExecutionResult, money_columns: set[str] | frozenset[str] = frozenset(),

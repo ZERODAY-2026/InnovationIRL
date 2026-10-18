@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = ("plan", "explain", "insights")
 PROVIDERS = ("gemini", "ollama")
+THINKING_MODES = ("default", "minimal")
+DEFAULT_THINKING = {"plan": "default", "explain": "minimal", "insights": "default"}
 
 
 def _env(name: str, default: str = "") -> str:
@@ -44,6 +46,8 @@ class Settings:
     gemini_api_key: str = field(default="", repr=False)
     gemini_model: str = "gemma-4-26b-a4b-it"
     gemini_role_models: dict[str, str] = field(default_factory=dict)
+    # "default" = the model thinks before answering (slower, often better SQL); "minimal" = no thinking.
+    gemini_thinking: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_THINKING))
     ollama_host: str = ""
     ollama_model: str = "gemma4:e4b"
     ollama_num_ctx: int = 4096
@@ -52,6 +56,9 @@ class Settings:
 
     def gemini_model_for(self, role: str) -> str:
         return self.gemini_role_models.get(role) or self.gemini_model
+
+    def gemini_thinking_for(self, role: str) -> str:
+        return self.gemini_thinking.get(role, "default")
 
     @property
     def snowflake_ready(self) -> bool:
@@ -73,6 +80,7 @@ class Settings:
             "gemma_fallback": self.gemma_fallback,
             "gemini_key_set": self.gemini_ready,
             "gemini_models": {role: self.gemini_model_for(role) for role in ROLES},
+            "gemini_thinking": {role: self.gemini_thinking_for(role) for role in ROLES},
             "ollama_host_set": self.ollama_ready,
             "ollama_model": self.ollama_model,
             "ollama_num_ctx": self.ollama_num_ctx,
@@ -91,6 +99,10 @@ def load_settings(env_file: Path | None = None) -> Settings:
     if fallback not in (*PROVIDERS, "none"):
         raise ValueError("GEMMA_FALLBACK must be gemini, ollama or none")
     role_models = {role: _env(f"GEMINI_MODEL_{role.upper()}") for role in ROLES}
+    thinking = {role: (_env(f"GEMINI_THINKING_{role.upper()}") or DEFAULT_THINKING[role]).lower() for role in ROLES}
+    for role, mode in thinking.items():
+        if mode not in THINKING_MODES:
+            raise ValueError(f"GEMINI_THINKING_{role.upper()} must be one of {THINKING_MODES}")
     return Settings(
         snowflake_account=_env("SNOWFLAKE_ACCOUNT"),
         snowflake_user=_env("SNOWFLAKE_USER", "DATAMIND_APP"),
@@ -105,6 +117,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         gemini_api_key=_env("GEMINI_API_KEY"),
         gemini_model=_env("GEMINI_MODEL", "gemma-4-26b-a4b-it"),
         gemini_role_models={k: v for k, v in role_models.items() if v},
+        gemini_thinking=thinking,
         ollama_host=_env("OLLAMA_HOST").rstrip("/"),
         ollama_model=_env("OLLAMA_MODEL", "gemma4:e4b"),
         ollama_num_ctx=_env_int("OLLAMA_NUM_CTX", 4096),

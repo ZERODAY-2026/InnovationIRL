@@ -158,6 +158,41 @@ def test_no_tier_configured(tmp_path):
         client(tmp_path, Recorder(), gemini_api_key="", ollama_host="").generate_json("plan", "S", "U", Reply)
 
 
+def test_thinking_budget_per_role(tmp_path):
+    rec = Recorder(gemini=[gemini_ok(), gemini_ok('{"ok": true, "word": "b"}')])
+    gemma = client(tmp_path, rec)
+    gemma.generate_json("plan", "S", "U1", Reply, max_output_tokens=700)
+    gemma.generate_json("explain", "S", "U2", Reply, max_output_tokens=300)
+    plan_cfg = json.loads(rec.requests[0].content)["generationConfig"]
+    explain_cfg = json.loads(rec.requests[1].content)["generationConfig"]
+    assert "thinkingConfig" not in plan_cfg and plan_cfg["maxOutputTokens"] == 700 + 3072
+    assert explain_cfg["thinkingConfig"] == {"thinkingLevel": "minimal"} and explain_cfg["maxOutputTokens"] == 300
+
+
+def test_thinking_level_unsupported_is_dropped(tmp_path):
+    rec = Recorder(gemini=[httpx.Response(400, json={"error": {"message": "Thinking level is not supported for this model."}}),
+                           gemini_ok()])
+    gemma = client(tmp_path, rec)
+    gemma.generate_json("explain", "S", "U", Reply, max_output_tokens=300)
+    retry = json.loads(rec.requests[1].content)["generationConfig"]
+    assert "thinkingConfig" not in retry and retry["maxOutputTokens"] == 300 + 3072
+
+
+def test_only_thought_parts_is_an_error(tmp_path):
+    thought_only = httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "hmm", "thought": True}]},
+                                                             "finishReason": "MAX_TOKENS"}], "usageMetadata": {}})
+    with pytest.raises(ModelError, match="no visible text"):
+        client(tmp_path, Recorder(gemini=[thought_only])).generate_json("plan", "S", "U", Reply)
+
+
+def test_ollama_asks_for_no_thinking_and_drops_flag_if_rejected(tmp_path):
+    rec = Recorder(ollama=[httpx.Response(400, text='{"error":"model does not support think"}'), ollama_ok()])
+    gemma = client(tmp_path, rec, gemini_api_key="", gemma_provider="ollama", gemma_fallback="none")
+    gemma.generate_json("plan", "S", "U", Reply)
+    assert json.loads(rec.requests[0].content)["think"] is False
+    assert "think" not in json.loads(rec.requests[1].content)
+
+
 def test_extract_json_tolerates_fences():
     assert extract_json('```json\n{"a": 1}\n```') == {"a": 1}
     with pytest.raises(ValueError):
