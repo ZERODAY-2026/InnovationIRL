@@ -225,12 +225,16 @@ class GemmaClient:
         return [name for name in sequence if name in self.tiers]
 
     def generate_json(self, role: str, system: str, user_levels: str | list[str], schema: type[T],
-                      max_output_tokens: int = 800) -> tuple[T, LLMCall]:
-        """Ask Gemma for a JSON object of `schema`. `user_levels` runs from richest to most compact prompt."""
+                      max_output_tokens: int = 800, allow_cloud: bool = True) -> tuple[T, LLMCall]:
+        """Ask Gemma for a JSON object of `schema`. `user_levels` runs from richest to most compact prompt.
+
+        allow_cloud=False (profiles not marked cloud_allowed) keeps the call on the local Ollama tier.
+        """
         levels = [user_levels] if isinstance(user_levels, str) else list(user_levels)
-        tiers = self.order()
+        tiers = [t for t in self.order() if allow_cloud or t != "gemini"]
         if not tiers:
-            raise ModelError("no Gemma tier is configured: set GEMINI_API_KEY, or OLLAMA_HOST for the local tier")
+            raise ModelError("no Gemma tier is configured for this dataset: set GEMINI_API_KEY "
+                             "(cloud-allowed datasets only), or OLLAMA_HOST for the local tier")
         last: ModelError | None = None
         for index, name in enumerate(tiers):
             try:

@@ -176,6 +176,53 @@ synonyms:
   client: CUSTOMER.C_NAME
   buyer: CUSTOMER.C_NAME
 
+# Example plans shown to Gemma (development material; never part of a held-out evaluation set).
+examples:
+  - question: What is the average account balance of customers in each market segment?
+    plan:
+      status: ANSWER
+      standalone_question: What is the average account balance of customers in each market segment?
+      assumptions: []
+      sql: >-
+        SELECT C_MKTSEGMENT AS SEGMENT, AVG(C_ACCTBAL) AS AVG_ACCOUNT_BALANCE, COUNT(*) AS CUSTOMER_COUNT
+        FROM CUSTOMER GROUP BY C_MKTSEGMENT ORDER BY AVG_ACCOUNT_BALANCE DESC
+  - question: Which supplier countries had the most late deliveries in 1996?
+    plan:
+      status: ANSWER
+      standalone_question: Which supplier nations had the most late line items shipped in 1996?
+      assumptions:
+        - A late line item was received after its committed date.
+        - 1996 refers to the ship date because the question is about deliveries.
+        - Showing the 10 supplier nations with the most late line items.
+      sql: >-
+        SELECT n.N_NAME AS SUPPLIER_NATION, COUNT_IF(l.L_RECEIPTDATE > l.L_COMMITDATE) AS LATE_LINES
+        FROM LINEITEM l JOIN SUPPLIER s ON l.L_SUPPKEY = s.S_SUPPKEY JOIN NATION n ON s.S_NATIONKEY = n.N_NATIONKEY
+        WHERE l.L_SHIPDATE >= '1996-01-01' AND l.L_SHIPDATE < '1997-01-01'
+        GROUP BY n.N_NAME ORDER BY LATE_LINES DESC LIMIT 10
+  - question: How many urgent orders were placed each month in 1993?
+    plan:
+      status: ANSWER
+      standalone_question: How many orders with priority 1-URGENT were placed in each month of 1993?
+      assumptions: []
+      sql: >-
+        SELECT DATE_TRUNC('MONTH', O_ORDERDATE) AS ORDER_MONTH, COUNT(*) AS ORDER_COUNT
+        FROM ORDERS WHERE O_ORDERPRIORITY = '1-URGENT' AND O_ORDERDATE >= '1993-01-01' AND O_ORDERDATE < '1994-01-01'
+        GROUP BY ORDER_MONTH ORDER BY ORDER_MONTH
+  - question: What will our revenue be next year?
+    plan:
+      status: UNSUPPORTED
+      standalone_question: What will revenue be next year?
+      reason: The data records past orders only, so it cannot forecast future revenue; revenue by year can be shown instead.
+  - question: Show me the numbers for Germany
+    plan:
+      status: CLARIFY
+      standalone_question: Show me the numbers for Germany
+      clarification: Which numbers do you mean for GERMANY?
+      options:
+        - What was the total revenue from customers in GERMANY by year?
+        - How many orders did customers in GERMANY place by year?
+        - How many suppliers are based in GERMANY?
+
 rules:
   - Revenue or sales means SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT)) over LINEITEM unless the user asks for order totals (O_TOTALPRICE).
   - A nation or region for orders, sales or customers is the customer's (CUSTOMER.C_NATIONKEY). Use the supplier's nation only when the question is about suppliers. State this as an assumption.

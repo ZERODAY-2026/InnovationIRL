@@ -81,6 +81,7 @@ class Profile:
     synonyms: dict[str, str]
     rules: list[str]
     default_paths: list[list[str]] = field(default_factory=list)  # preferred join routes, e.g. sales -> customer nation
+    examples: list[dict] = field(default_factory=list)  # [{"question": ..., "plan": {...}}] shown to the planner
     coverage: dict[str, tuple[str, str]] = field(default_factory=dict)  # "TABLE.COL" -> (min, max)
     _domain: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict, repr=False)
 
@@ -310,6 +311,7 @@ def load_profile(name: str, profiles_dir: Path | None = None, cache_dir: Path | 
         synonyms=synonyms,
         rules=[str(r) for r in raw.get("rules") or []],
         default_paths=default_paths,
+        examples=[e for e in raw.get("examples") or [] if isinstance(e, dict) and "question" in e and "plan" in e],
     )
     for e in profile.edges():
         profile._union((e.left_table, e.left_col), (e.right_table, e.right_col))
