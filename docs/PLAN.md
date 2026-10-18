@@ -80,12 +80,13 @@ Something is listed as done only after it has actually been run.
 |---|---|---|
 | Before | `01c7cf45-000e-16d0-0002-b98a0001523a` | INDONESIA, FRANCE, RUSSIA, MOZAMBIQUE, CANADA |
 | After `demo_change.sql` (one tagged order of 60,000,000 for a JAPAN customer, run as `DATAMIND_ADMIN`) | `01c7cf65-000e-1673-0000-0002b98ac51d` | INDONESIA, JAPAN, FRANCE, RUSSIA, MOZAMBIQUE |
+| After `demo_revert.sql` | `01c7cf68-000e-1619-0000-0002b98ad53d` | INDONESIA, FRANCE, RUSSIA, MOZAMBIQUE, CANADA |
 
-- The diff reported "JAPAN: new in the result" and "CANADA: no longer in the result".
-- The same SQL ran again with no new plan and no new model call. The answer text re-rendered from Gemma's original cell-pointer template, now naming JAPAN.
+- The diff after the change reported "JAPAN: new in the result" and "CANADA: no longer in the result". The diff after the revert reported the reverse.
+- The reverted result is identical, cell for cell, to the first run.
+- All three runs executed the same SQL text, with no new plan and no new model call. The answer text re-rendered from Gemma's original cell-pointer template each time.
 
 **Waiting on a team action:**
-- `demo_revert.sql`.
 - The OWID seed SQL, run as `DATAMIND_ADMIN` (the app role is read-only).
 - Held-out set A.
 
