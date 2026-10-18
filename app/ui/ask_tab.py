@@ -5,7 +5,7 @@ from html import escape
 
 import streamlit as st
 
-from app.ui import trace
+from app.ui import charts, extras, trace
 from app.ui.common import answer_html, html, split_note, table_html
 from datamind.contracts import Envelope
 from datamind.prompts import Turn
@@ -40,7 +40,7 @@ def status_line(dm, env: Envelope | None, catalog_ok: bool) -> str:
     return f"Dataset: {dm.profile.title} · Gemma: {gemma} · Snowflake: {sf}"
 
 
-def render(dm, catalog_ok: bool, extras=None) -> None:
+def render(dm, catalog_ok: bool) -> None:
     st.session_state.setdefault("history", [])
     examples = [e["question"] for e in dm.profile.examples if e.get("question")][:4]
     st.text_area("Your question about the data", key="question", height=96,
@@ -61,10 +61,10 @@ def render(dm, catalog_ok: bool, extras=None) -> None:
         html("<p class='dm-sub'>No question asked yet. Type one above or pick an example. Each answer shows the SQL "
              "that ran, its checks, the result rows and the Snowflake query ID.</p>")
         return
-    show(dm, env, extras)
+    show(dm, env)
 
 
-def show(dm, env: Envelope, extras=None) -> None:
+def show(dm, env: Envelope) -> None:
     html(f"<p class='dm-q'>Question: {escape(env.question)}</p>")
     if env.status == "ANSWER" and env.execution and env.answer:
         body, note = split_note(env.answer.segments)
@@ -81,18 +81,22 @@ def show(dm, env: Envelope, extras=None) -> None:
                  f"the backup tier {escape(trace.tier_text(fallback[-1]))}.</p>")
         x = env.execution
         money = dm.profile.money_columns()
-        if extras:
-            extras.chart(x, money)
-        st.markdown("### Result rows")
-        shown = "; first 25 shown" if len(x.rows) > 25 else ""
-        html(f"<p class='dm-small'>{x.row_count} row(s) from Snowflake query <code>{escape(x.query_id)}</code>{shown}.</p>")
-        html(table_html(x.columns, x.rows, money))
-        if len(x.rows) > 25:
-            with st.expander(f"All {len(x.rows)} returned rows"):
-                st.dataframe([dict(zip(x.columns, row)) for row in x.rows], use_container_width=True)
+        chart = charts.build(x.columns, x.rows, money)
+        left, right = st.columns([1, 1]) if chart is not None else (st.container(), None)
+        with left:
+            st.markdown("### Result rows")
+            shown = "; first 25 shown" if len(x.rows) > 25 else ""
+            html(f"<p class='dm-small'>{x.row_count} row(s) from Snowflake query <code>{escape(x.query_id)}</code>{shown}.</p>")
+            html(table_html(x.columns, x.rows, money))
+            if len(x.rows) > 25:
+                with st.expander(f"All {len(x.rows)} returned rows"):
+                    st.dataframe([dict(zip(x.columns, row)) for row in x.rows], width="stretch")
+        if right is not None:
+            with right:
+                st.markdown("### Chart of the result rows")
+                st.altair_chart(chart, theme=None, width="stretch")
         trace.render(dm, env)
-        if extras:
-            extras.actions(dm, env)
+        extras.actions(dm, env)
     elif env.status == "CLARIFY":
         html(f"<div class='dm-answer'>{escape(env.message or 'Could you say a little more?')}</div>")
         html("<p class='dm-small'>Nothing was run yet. Pick a reply or type your own question above.</p>")

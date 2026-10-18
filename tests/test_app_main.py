@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from app.ui.charts import pick
+
 from datamind.contracts import (Envelope, ExecutionResult, GateReport, LLMCall, Plan, Receipt, RenderedAnswer,
                                 Segment)
 
@@ -33,7 +35,7 @@ class FakeDM:
 
     def rerun(self, env):
         new = env.model_copy(deep=True)
-        new.execution.query_id, new.previous_query_id, new.changes = "qid-rerun", env.execution.query_id, []
+        new.execution.query_id, new.previous_query_id, new.changes = "qid-rerun", env.execution.query_id, ["JAPAN: REVENUE 200.50 -> 210.00"]
         return new
 
 
@@ -114,3 +116,21 @@ def test_zero_rows_shows_diagnosis(tpch, envs):
     assert not at.exception
     page = text(at)
     assert "Why no rows matched" in page and "qid-diag" in page and "keeps 0 of 1,500,000 rows" in page
+
+
+def test_chart_shape_rules():
+    assert pick(["N_NAME", "REVENUE"], [["JAPAN", 2.0], ["CHINA", 1.0]]) == ("bar", "N_NAME", "REVENUE")
+    assert pick(["O_YEAR", "REVENUE"], [[1995, 2.0], [1996, 1.0]]) == ("line", "O_YEAR", "REVENUE")
+    assert pick(["C_NAME", "C_CUSTKEY", "REVENUE"], [["a", 1, 2.0], ["b", 2, 1.0]]) == ("bar", "C_NAME", "REVENUE")
+    assert pick(["N_NAME", "REVENUE"], [["JAPAN", 2.0]]) is None
+    assert pick(["A", "B", "C"], [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]) is None
+
+
+def test_chart_and_rerun_diff_with_both_query_ids(tpch, envs):
+    at = ask(tpch, envs, "top")
+    assert len(at.get("vega_lite_chart")) == 1
+    at.button(key="rerun-qid-answer").click()
+    at.run()
+    assert not at.exception
+    page = text(at)
+    assert "qid-answer" in page and "qid-rerun" in page and "REVENUE 200.50 -&gt; 210.00" in page
