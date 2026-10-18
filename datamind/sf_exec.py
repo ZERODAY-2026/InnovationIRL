@@ -151,13 +151,15 @@ def cartesian_scan(columns: list[str], rows: list[Any]) -> bool:
     op = names.index("operation")
     if not any(str(r[op]).lower() == "cartesianjoin" for r in rows):
         return False
-    if "id" not in names or "parent" not in names:
+    parent_name = next((n for n in ("parentoperators", "parent") if n in names), None)
+    if "id" not in names or parent_name is None:
         return True  # cannot tell what feeds the join: stay conservative
-    ident, parent = names.index("id"), names.index("parent")
+    ident, parent = names.index("id"), names.index(parent_name)
     step = names.index("step") if "step" in names else None
     children: dict[tuple, list[Any]] = {}
     for r in rows:
-        children.setdefault((r[step] if step is not None else 0, r[parent]), []).append(r)
+        for p in _parents(r[parent]):  # Snowflake lists parents as "[4, 13]" (a CTE can feed several operators)
+            children.setdefault((r[step] if step is not None else 0, p), []).append(r)
 
     def scans_below(r: Any) -> bool:
         for child in children.get((r[step] if step is not None else 0, r[ident]), []):
@@ -169,6 +171,14 @@ def cartesian_scan(columns: list[str], rows: list[Any]) -> bool:
         return False
 
     return any(scans_below(r) for r in rows if str(r[op]).lower() == "cartesianjoin")
+
+
+def _parents(value: Any) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, int):
+        return [value]
+    return [int(x) for x in re.findall(r"\d+", str(value))]
 
 
 def _col_name(description_item: Any) -> str:

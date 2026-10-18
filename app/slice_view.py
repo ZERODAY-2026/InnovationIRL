@@ -73,9 +73,18 @@ def show(env: Envelope, money: set[str]) -> None:
             frame = pd.DataFrame([[format_value(v, c, money) for c, v in zip(x.columns, row)] for row in x.rows],
                                  columns=x.columns)
             st.dataframe(frame, use_container_width=True)
+    if env.diagnostics:
+        st.caption("Why no rows: " + " · ".join(env.diagnostics) + f" (query {env.diagnostic_query_id})")
+    if env.previous_query_id:
+        st.markdown(f"**Re-run of query `{env.previous_query_id}` on live data.** Changes:")
+        st.markdown("\n".join(f"- {md_escape(c)}" for c in env.changes))
     if env.llm_calls:
         st.caption(" · ".join(f"Gemma {c.role}: {c.tier}/{c.model} {c.latency_ms} ms{' cached' if c.cached else ''}"
                               f"{' (backup tier)' if c.fallback_used else ''}" for c in env.llm_calls))
+    if env.status == "ANSWER" and env.execution and st.button("Re-run on live data", key=f"rerun-{id(env)}",
+                                                              help="Runs the same SQL again; no new plan"):
+        st.session_state.rerun_of = env
+        st.rerun()
 
 
 st.title("DataMind: ask the data")
@@ -103,6 +112,9 @@ def context() -> list[Turn]:
     return turns
 
 
+if "rerun_of" in st.session_state:
+    with st.spinner("Running the same SQL on live data..."):
+        st.session_state.history.append(dm.rerun(st.session_state.pop("rerun_of")))
 question = st.chat_input("Ask a question about the data") or st.session_state.pop("pending", None)
 if question:
     with st.spinner("Planning, checking and running the query..."):
