@@ -1,6 +1,6 @@
 # DataMind (PS1): plan and status
 
-Last updated 18 Oct 2026, 1:50 PM IST. Final deadline 6:00 PM IST.
+Last updated 18 Oct 2026, 2:00 PM IST. Final deadline 6:00 PM IST.
 
 ## Status: done / next
 Something is listed as done only after it has actually been run.
@@ -20,21 +20,35 @@ Something is listed as done only after it has actually been run.
   - the local context budget, with truncation detection
   - the plan cache
 
+**Vertical slice code (verified by 106 offline tests with fake Gemma and Snowflake):**
+- Pipeline: plan → gate → `EXPLAIN` → up to 2 repairs → execute → answer.
+  - Refusals never reach Snowflake.
+  - Empty results get an honest "no data matched".
+- Cell-bound renderer. Invented numbers switch to a deterministic answer (tested on "top 5 nations by revenue in 1995").
+- Receipt compiled from the executed SQL.
+- CLI: `python -m datamind ask`.
+- Review page: `app/slice_view.py`.
+- Introspection.
+- README setup for both Gemma paths.
+
 **Written but not yet run against live services:**
 - the Snowflake runner
 - `snowflake/setup.sql`
 - `scripts/gen_keypair.py`
-- the smoke test (`python -m datamind.smoke`)
+- the smoke test
+- introspection
 
 **Blocked:**
-- The live Gemini check is waiting for `GEMINI_API_KEY` in `.env`.
-- The Snowflake check is waiting for the trial account and for `setup.sql` to be run.
+- The live Gemini check is waiting for `GEMINI_API_KEY` in `InnovationIRL/.env`.
+- The Snowflake check is waiting for `setup.sql` and a registered key.
 
 **Not working yet:**
-- No end-to-end answers.
+- No live end-to-end answer has been produced.
 - No accuracy figures.
 
-**Next:** Phase 2, the vertical slice: prompts, cell-bound answer renderer, receipt, pipeline, CLI.
+**Next:**
+1. Phase 2 exit test once credentials exist: smoke test, then 5 dev questions end to end with query IDs, plus a DML refusal.
+2. Phase 3: eval runner and tier measurement.
 
 ## Approach: compile, don't chat
 1. **Plan (Gemma).** One structured call returns:
