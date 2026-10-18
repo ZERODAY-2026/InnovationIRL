@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from datamind.config import load_settings  # noqa: E402
 from datamind.contracts import Envelope  # noqa: E402
 from datamind.pipeline import DataMind  # noqa: E402
+from datamind.prompts import Turn  # noqa: E402
 from datamind.render import format_value  # noqa: E402
 
 st.set_page_config(page_title="DataMind", layout="wide")
@@ -50,6 +51,8 @@ def show(env: Envelope, money: set[str]) -> None:
     else:
         st.error(env.message or "Something went wrong.")
 
+    if env.plan and env.plan.standalone_question and env.plan.standalone_question.strip() != env.question.strip():
+        st.caption(f"Interpreted as: {env.plan.standalone_question}")
     if env.plan and env.plan.assumptions:
         st.markdown("**Assumptions:** " + " · ".join(md_escape(a) for a in env.plan.assumptions))
     if env.receipt:
@@ -82,15 +85,28 @@ except Exception as exc:  # configuration problems are shown, not raised
     st.error(f"Configuration problem: {exc}")
     st.stop()
 st.caption(f"Dataset: {dm.profile.title}. Answers are computed in Snowflake; Gemma plans the query and words the answer.")
+st.session_state.setdefault("history", [])
 with st.sidebar:
+    if st.button("New conversation"):
+        st.session_state.history = []
     st.subheader("Runtime")
     st.json(dm.settings.public_summary())
 
-st.session_state.setdefault("history", [])
+
+def context() -> list[Turn]:
+    """Previous answered questions, so follow-ups like "and in 1994?" can be resolved."""
+    turns = []
+    for env in st.session_state.history[-3:]:
+        if env.status == "ANSWER" and env.execution and env.plan:
+            turns.append(Turn(env.plan.standalone_question or env.question, env.execution.sql,
+                              env.execution.columns, env.execution.row_count))
+    return turns
+
+
 question = st.chat_input("Ask a question about the data") or st.session_state.pop("pending", None)
 if question:
     with st.spinner("Planning, checking and running the query..."):
-        st.session_state.history.append(dm.ask(question))
+        st.session_state.history.append(dm.ask(question, context()))
 for env in reversed(st.session_state.history):
     st.subheader(env.question)
     show(env, dm.profile.money_columns())

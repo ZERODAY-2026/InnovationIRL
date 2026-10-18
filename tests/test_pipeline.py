@@ -132,6 +132,23 @@ def test_private_profile_keeps_calls_local(tpch):
     assert all(call["allow_cloud"] is False for call in gemma.calls)
 
 
+def test_outside_coverage_adds_honest_note(tpch):
+    covered = tpch.__class__(**{**tpch.__dict__, "coverage": {"ORDERS.O_ORDERDATE": ("1992-01-01", "1998-08-02")}})
+    sql = ("SELECT COUNT(*) AS N FROM ORDERS WHERE O_ORDERDATE >= '2005-01-01' AND O_ORDERDATE < '2006-01-01'")
+    runner = FakeRunner(rows=[[Decimal(0)]])
+    dm, _, _ = make(covered, [plan(sql=sql)], [{"answer": "There were {{r0.NATION}} orders."}], runner=runner)
+    env = dm.ask("How many orders were placed in 2005?")
+    assert env.status == "ANSWER"
+    assert "only covers ORDERS.O_ORDERDATE from 1992-01-01 to 1998-08-02" in env.answer.text
+    assert "2005-01-01" in env.answer.text
+
+
+def test_inside_coverage_has_no_note(tpch):
+    covered = tpch.__class__(**{**tpch.__dict__, "coverage": {"ORDERS.O_ORDERDATE": ("1992-01-01", "1998-08-02")}})
+    dm, _, _ = make(covered, [plan()], [{"answer": "{{r0.NATION}} leads."}])
+    assert "only covers" not in dm.ask(Q).answer.text
+
+
 def test_profile_examples_pass_the_gate(tpch):
     answers = [e for e in tpch.examples if e["plan"]["status"] == "ANSWER"]
     assert len(answers) >= 3

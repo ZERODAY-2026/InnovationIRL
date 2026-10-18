@@ -52,6 +52,17 @@ def test_cache_merges_coverage(tmp_path):
     assert profile.tables["PART"].columns["P_CONTAINER"].values == ["SM CASE", "LG BOX"]
 
 
+def test_value_hints_typos_and_long_lists(tmp_path):
+    types = [f"{a} {b} {c}" for a in ("ECONOMY", "LARGE", "STANDARD") for b in ("ANODIZED", "BURNISHED", "POLISHED")
+             for c in ("BRASS", "TIN", "COPPER", "STEEL")]  # 36 values: too many to inline, like the real 150
+    (tmp_path / "tpch.json").write_text(json.dumps({"values": {"PART.P_TYPE": types}}), encoding="utf-8")
+    profile = load_profile("tpch", cache_dir=tmp_path)
+    hints = profile.value_hints("What did customers in Germny spend on brass parts?")
+    assert any("'GERMANY'" in h for h in hints)
+    assert any("P_TYPE ILIKE '%BRASS%'" in h for h in hints)
+    assert profile.value_hints("Revenue in GERMANY per nation") == []  # exact values need no hint; 'per' is not 'PERU'
+
+
 def test_bad_join_rejected(tmp_path):
     (tmp_path / "bad.yaml").write_text(
         "name: bad\ntables:\n  A:\n    columns:\n      X: {type: number}\njoins:\n  - A.X = B.Y\n",

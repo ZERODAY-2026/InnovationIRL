@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from datamind.gate import check_sql
-from datamind.receipt import build_receipt, filter_literals
+from datamind.receipt import build_receipt, filter_literals, period_filters
 
 SQL = """
 SELECT n.N_NAME AS NATION, SUM(l.L_EXTENDEDPRICE * (1 - l.L_DISCOUNT)) AS REVENUE
@@ -35,6 +35,12 @@ def test_implicit_join_separated_from_filters(tpch):
     gate = check_sql("SELECT COUNT(*) AS N FROM ORDERS, CUSTOMER WHERE O_CUSTKEY = C_CUSTKEY AND C_MKTSEGMENT = 'BUILDING'", tpch)
     r = build_receipt(gate.sql, tpch, [], gate.row_cap)
     assert r.joins == ["O_CUSTKEY = C_CUSTKEY"] and r.filters == ["C_MKTSEGMENT = 'BUILDING'"]
+
+
+def test_period_filters_find_dates_and_years():
+    dates, years = period_filters("SELECT COUNT(*) FROM ORDERS WHERE YEAR(O_ORDERDATE) = 2005 OR O_ORDERDATE < '1992-01-01'")
+    assert dates == ["1992-01-01"] and years == [2005]
+    assert period_filters("SELECT COUNT(*) FROM ORDERS WHERE YEAR(O_ORDERDATE) IN (1993, 1994)")[1] == [1993, 1994]
 
 
 def test_filter_literals_exclude_limit():

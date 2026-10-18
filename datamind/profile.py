@@ -160,6 +160,37 @@ class Profile:
             return list(self.tables)
         return self._connect(picked)
 
+    def value_hints(self, question: str, limit: int = 6) -> list[str]:
+        """Grounded literal hints: likely typos of listed values, and words found inside long (not inlined) lists."""
+        words = re.findall(r"[A-Za-z0-9#]+", question)
+        grams = {" ".join(words[i:i + n]) for n in (1, 2, 3) for i in range(len(words) - n + 1)}
+        lowered = question.lower()
+        hints: list[tuple[int, str]] = []
+        seen: set[str] = set()
+        for table in self.tables.values():
+            for column in table.columns.values():
+                if column.hidden or not column.values:
+                    continue
+                target = f"{table.name}.{column.name}"
+                if len(column.values) <= MAX_INLINE_VALUES:
+                    for value in column.values:
+                        if len(value) < 4 or value.lower() in lowered:
+                            continue  # exact values are already visible in the prompt
+                        for gram in grams:
+                            score = fuzz.ratio(gram.lower(), value.lower())
+                            if len(gram) >= 4 and score >= 88 and value not in seen:
+                                hints.append((int(score), f'"{gram}" probably means {target} = \'{value}\''))
+                                seen.add(value)
+                else:
+                    for word in {w.upper() for w in words if len(w) >= 4}:
+                        matches = [v for v in column.values if word in re.split(r"[\s\-]+", v.upper())]
+                        if matches and (target, word) not in seen:
+                            seen.add((target, word))  # type: ignore[arg-type]
+                            examples = ", ".join(f"'{m}'" for m in matches[:3])
+                            hints.append((90, f'"{word.lower()}" appears in {len(matches)} {target} values, e.g. {examples}; '
+                                              f"filter with {column.name} ILIKE '%{word}%'"))
+        return [text for _, text in sorted(hints, key=lambda h: -h[0])[:limit]]
+
     def render_schema(self, tables: list[str] | None = None, with_values: bool = True) -> str:
         """Compact schema text for the PLAN prompt. Hidden columns are omitted."""
         names = [n for n in self.tables if tables is None or n in tables]

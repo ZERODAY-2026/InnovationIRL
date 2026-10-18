@@ -71,6 +71,25 @@ def filter_literals(sql: str) -> tuple[set[Decimal], set[str]]:
     return numbers, dates
 
 
+def period_filters(sql: str) -> tuple[list[str], list[int]]:
+    """Date literals and YEAR(...) comparison values used in the executed SQL's filters."""
+    tree = sqlglot.parse_one(sql, read="snowflake")
+    dates: list[str] = []
+    years: list[int] = []
+    for clause in [*tree.find_all(exp.Where), *tree.find_all(exp.Having)]:
+        for literal in clause.find_all(exp.Literal):
+            if literal.is_string and _DATE.match(literal.name):
+                dates.append(literal.name)
+        for comparison in clause.find_all(exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.NEQ):
+            sides = (comparison.left, comparison.right)
+            if any(s.find(exp.Year) or (isinstance(s, exp.Extract) and s.name.upper() == "YEAR") for s in sides):
+                years += [int(s.name) for s in sides if isinstance(s, exp.Literal) and s.is_int]
+        for in_list in clause.find_all(exp.In):
+            if in_list.this.find(exp.Year):
+                years += [int(v.name) for v in in_list.expressions if isinstance(v, exp.Literal) and v.is_int]
+    return dates, years
+
+
 def _top_selects(tree: exp.Expression) -> list[exp.Select]:
     if isinstance(tree, exp.Select):
         return [tree]

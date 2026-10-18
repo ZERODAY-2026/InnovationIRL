@@ -69,7 +69,11 @@ def plan_prompts(profile: Profile, question: str, history: list[Turn] | None = N
         (profile.render_schema(relevant), False),
         (profile.render_schema(relevant, with_values=False), False),
     ]
-    tail = _history_block(history) + f"Question: {question}\n" + _repair_block(repair) + "Return the JSON plan."
+    hints = profile.value_hints(question)
+    hint_block = ("Value hints from the data (use only if the question refers to them):\n"
+                  + "\n".join(f"- {h}" for h in hints) + "\n") if hints else ""
+    tail = (_history_block(history) + hint_block + f"Question: {question}\n" + _repair_block(repair)
+            + "Return the JSON plan.")
     header = f"Dataset: {profile.title}. {profile.description}\n\n"
     return [header + schema + "\n\n" + (_examples_block(profile) if with_examples else "") + tail
             for schema, with_examples in variants]

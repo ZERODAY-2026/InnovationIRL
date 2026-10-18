@@ -9,7 +9,7 @@ from .gate import check_sql
 from .gemma import GemmaClient, ModelError
 from .profile import Profile, load_profile
 from .prompts import EXPLAIN_SYSTEM, PLAN_SYSTEM, Turn, explain_prompt, plan_prompts
-from .receipt import build_receipt, filter_literals
+from .receipt import build_receipt, filter_literals, period_filters
 from .render import deterministic_answer, is_empty, render_answer
 from .sf_exec import QueryError, SnowflakeRunner, SnowflakeUnavailable
 
@@ -90,7 +90,25 @@ class DataMind:
         env.receipt = build_receipt(result.sql, self.profile, env.plan.assumptions if env.plan else [], gate.row_cap)
         env.status = "ANSWER"
         env.answer = self._answer(question, env, allow_cloud, model_answer)
+        note = self._outside_coverage_note(result.sql)
+        if note and env.answer and note not in env.answer.text:
+            env.answer.segments.append(Segment(text=" " + note))
         return env
+
+    def _outside_coverage_note(self, sql: str) -> str:
+        """Code-written note when the query asks about periods the data does not cover (honest missing data)."""
+        anchor = self.profile.time_anchor
+        if not anchor or anchor not in self.profile.coverage:
+            return ""
+        lo, hi = self.profile.coverage[anchor]
+        try:
+            dates, years = period_filters(sql)
+        except Exception:
+            return ""
+        outside = [d for d in dates if d < lo or d > hi] + [str(y) for y in years if y < int(lo[:4]) or y > int(hi[:4])]
+        if not outside:
+            return ""
+        return f"Note: the data only covers {anchor} from {lo} to {hi}, so {', '.join(sorted(set(outside)))} is outside it."
 
     def _answer(self, question: str, env: Envelope, allow_cloud: bool, model_answer: bool = True) -> RenderedAnswer:
         result = env.execution
@@ -100,9 +118,6 @@ class DataMind:
             return deterministic_answer(result, money)
         if is_empty(result):
             answer = deterministic_answer(result, money)
-            note = self._coverage_note()
-            if note:
-                answer.segments.append(Segment(text=" " + note))
             return answer
         started = time.perf_counter()
         try:
@@ -119,14 +134,6 @@ class DataMind:
         coverage_dates = {d for pair in self.profile.coverage.values() for d in pair}
         return render_answer(draft.answer, result, question, money, audit_numbers=numbers,
                              audit_dates=dates | coverage_dates)
-
-    def _coverage_note(self) -> str:
-        anchor = self.profile.time_anchor
-        if anchor and anchor in self.profile.coverage:
-            lo, hi = self.profile.coverage[anchor]
-            return f"For reference, {anchor} in this dataset runs from {lo} to {hi}."
-        return ""
-
 
 def _status_message(plan: Plan) -> str:
     if plan.status == "CLARIFY":
