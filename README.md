@@ -119,7 +119,7 @@ On macOS or Linux, use `python3 -m venv .venv`, `.venv/bin/python -m pip install
 .venv\Scripts\python -m pytest            # offline tests, no credentials needed
 .venv\Scripts\python -m datamind.smoke    # Gemini per model ID, Ollama if set, Snowflake permissions
 .venv\Scripts\python -m datamind ask "Which 5 nations had the highest revenue in 1995?"
-.venv\Scripts\python -m streamlit run app/slice_view.py   # review page: evidence, re-run, dig deeper
+.venv\Scripts\python -m streamlit run app/main.py   # dashboard: Ask (answer, trace, chart, re-run, dig deeper) and Data tabs; app/slice_view.py is the minimal fallback
 ```
 
 ### 5. Show an answer changing when the data changes
