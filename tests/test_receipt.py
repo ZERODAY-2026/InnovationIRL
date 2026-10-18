@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from datamind.gate import check_sql
-from datamind.receipt import build_receipt, filter_literals, period_filters
+from datamind.receipt import build_receipt, filter_literals, period_filters, zero_row_probe
 
 SQL = """
 SELECT n.N_NAME AS NATION, SUM(l.L_EXTENDEDPRICE * (1 - l.L_DISCOUNT)) AS REVENUE
@@ -35,6 +35,22 @@ def test_implicit_join_separated_from_filters(tpch):
     gate = check_sql("SELECT COUNT(*) AS N FROM ORDERS, CUSTOMER WHERE O_CUSTKEY = C_CUSTKEY AND C_MKTSEGMENT = 'BUILDING'", tpch)
     r = build_receipt(gate.sql, tpch, [], gate.row_cap)
     assert r.joins == ["O_CUSTKEY = C_CUSTKEY"] and r.filters == ["C_MKTSEGMENT = 'BUILDING'"]
+
+
+def test_zero_row_probe_counts_each_filter(tpch):
+    sql = ("SELECT O_ORDERKEY FROM ORDERS JOIN CUSTOMER ON O_CUSTKEY = C_CUSTKEY "
+           "WHERE C_NAME = 'Customer#999999999' AND O_ORDERSTATUS = 'O' ORDER BY O_ORDERKEY LIMIT 10")
+    probe_sql, labels = zero_row_probe(sql)
+    assert labels == ["C_NAME = 'Customer#999999999'", "O_ORDERSTATUS = 'O'"]
+    assert "COUNT_IF(C_NAME = 'Customer#999999999') AS F0" in probe_sql and "JOIN CUSTOMER" in probe_sql
+    assert "ORDER BY" not in probe_sql and "LIMIT" not in probe_sql
+    assert check_sql(probe_sql, tpch).ok
+
+
+def test_zero_row_probe_keeps_implicit_joins(tpch):
+    probe_sql, labels = zero_row_probe("SELECT O_ORDERKEY FROM ORDERS, CUSTOMER WHERE O_CUSTKEY = C_CUSTKEY AND C_NAME = 'x'")
+    assert labels == ["C_NAME = 'x'"] and "WHERE O_CUSTKEY = C_CUSTKEY" in probe_sql
+    assert zero_row_probe("SELECT O_ORDERKEY FROM ORDERS") is None
 
 
 def test_period_filters_find_dates_and_years():

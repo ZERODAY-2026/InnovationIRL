@@ -112,3 +112,5 @@ class Envelope(BaseModel):
     receipt: Receipt | None = None
     llm_calls: list[LLMCall] = Field(default_factory=list)
     timings_ms: dict[str, int] = Field(default_factory=dict)
+    diagnostics: list[str] = Field(default_factory=list)  # e.g. how many rows each filter keeps when nothing matched
+    diagnostic_query_id: str | None = None

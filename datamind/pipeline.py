@@ -9,7 +9,7 @@ from .gate import check_sql
 from .gemma import GemmaClient, ModelError
 from .profile import Profile, load_profile
 from .prompts import EXPLAIN_SYSTEM, PLAN_SYSTEM, Turn, explain_prompt, plan_prompts
-from .receipt import build_receipt, filter_literals, period_filters
+from .receipt import build_receipt, filter_literals, period_filters, zero_row_probe
 from .render import deterministic_answer, is_empty, render_answer
 from .sf_exec import QueryError, SnowflakeRunner, SnowflakeUnavailable
 
@@ -93,7 +93,38 @@ class DataMind:
         note = self._outside_coverage_note(result.sql)
         if note and env.answer and note not in env.answer.text:
             env.answer.segments.append(Segment(text=" " + note))
+        if result.row_count == 0 and env.answer:
+            self._diagnose_empty(env, result.sql)
         return env
+
+    def _diagnose_empty(self, env: Envelope, sql: str) -> None:
+        """Run one Snowflake query that shows which filter removed every row (evidence, not a guess)."""
+        try:
+            probe = zero_row_probe(sql)
+        except Exception:
+            probe = None
+        if not probe:
+            return
+        probe_sql, labels = probe
+        report = check_sql(probe_sql, self.profile)
+        if not report.ok:
+            return
+        try:
+            diag = self.runner.execute(report.sql or "", 1)
+        except (QueryError, SnowflakeUnavailable):
+            return
+        if not diag.rows:
+            return
+        base, counts = diag.rows[0][0], diag.rows[0][1:]
+        env.diagnostic_query_id = diag.query_id
+        env.diagnostics = [f"Rows before filters: {int(base or 0):,}"] + [
+            f"{label} alone keeps {int(count or 0):,} rows" for label, count in zip(labels, counts)]
+        empty = [label for label, count in zip(labels, counts) if not count]
+        if empty:
+            text = f" The filter {empty[0]} matches no rows in the data (diagnosis query {diag.query_id})."
+        else:
+            text = f" Each filter matches some rows, but no row satisfies all of them together (diagnosis query {diag.query_id})."
+        env.answer.segments.append(Segment(text=text))
 
     def _outside_coverage_note(self, sql: str) -> str:
         """Code-written note when the query asks about periods the data does not cover (honest missing data)."""

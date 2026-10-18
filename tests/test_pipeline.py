@@ -35,9 +35,10 @@ class FakeGemma:
 
 
 class FakeRunner:
-    def __init__(self, rows=None, explain=()):
+    def __init__(self, rows=None, explain=(), later_rows=()):
         self.rows = rows if rows is not None else [["GERMANY", Decimal("1234567.891")], ["FRANCE", Decimal("1200000.5")]]
         self.explain_results, self.executed = list(explain), []
+        self.later_rows = list(later_rows)  # rows for the 2nd, 3rd... execute (e.g. a diagnosis query)
 
     def explain(self, sql):
         item = self.explain_results.pop(0) if self.explain_results else []
@@ -47,8 +48,9 @@ class FakeRunner:
 
     def execute(self, sql, max_rows):
         self.executed.append(sql)
-        return ExecutionResult(query_id="01b-fake", sql=sql, columns=["NATION", "REVENUE"], rows=self.rows,
-                               row_count=len(self.rows), truncated=False, elapsed_ms=3,
+        rows = self.rows if len(self.executed) == 1 or not self.later_rows else self.later_rows.pop(0)
+        return ExecutionResult(query_id=f"01b-fake-{len(self.executed)}", sql=sql, columns=["NATION", "REVENUE"], rows=rows,
+                               row_count=len(rows), truncated=False, elapsed_ms=3,
                                executed_at="2026-10-18T08:00:00+00:00", role="DATAMIND_READER", warehouse="DATAMIND_WH")
 
 
@@ -61,7 +63,7 @@ def make(tpch, plans, answers=(), runner=None):
 def test_answer_end_to_end(tpch):
     dm, gemma, runner = make(tpch, [plan()], [{"answer": "{{r0.NATION}} led 1995 with {{r0.REVENUE}}."}])
     env = dm.ask(Q)
-    assert env.status == "ANSWER" and env.execution.query_id == "01b-fake"
+    assert env.status == "ANSWER" and env.execution.query_id == "01b-fake-1"
     assert env.answer.text == "GERMANY led 1995 with 1,234,567.89." and not env.answer.fallback_used
     assert env.receipt.limit == 5 and "LIMIT 5" in runner.executed[0]
     assert [c.role for c in env.llm_calls] == ["plan", "explain"]
@@ -111,6 +113,17 @@ def test_empty_result_skips_explain_model(tpch):
     env = dm.ask(Q)
     assert env.status == "ANSWER" and "No data matched" in env.answer.text
     assert [c["role"] for c in gemma.calls] == ["plan"]
+
+
+def test_empty_result_names_the_filter_that_matched_nothing(tpch):
+    sql = ("SELECT O_ORDERKEY FROM ORDERS JOIN CUSTOMER ON O_CUSTKEY = C_CUSTKEY "
+           "WHERE C_NAME = 'Customer#999999999' AND O_ORDERSTATUS = 'O'")
+    runner = FakeRunner(rows=[], later_rows=[[[Decimal(1500000), Decimal(0), Decimal(732044)]]])
+    dm, _, _ = make(tpch, [plan(sql=sql)], runner=runner)
+    env = dm.ask("Orders of Customer#999999999?")
+    assert "COUNT_IF" in runner.executed[1]
+    assert "The filter C_NAME = 'Customer#999999999' matches no rows" in env.answer.text
+    assert env.diagnostic_query_id == "01b-fake-2" and env.diagnostics[0] == "Rows before filters: 1,500,000"
 
 
 def test_model_unavailable_is_reported(tpch):

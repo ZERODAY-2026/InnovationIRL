@@ -71,6 +71,29 @@ def filter_literals(sql: str) -> tuple[set[Decimal], set[str]]:
     return numbers, dates
 
 
+def zero_row_probe(sql: str, max_filters: int = 8) -> tuple[str, list[str]] | None:
+    """For a query that returned no rows: one query counting how many rows each WHERE filter keeps on its own.
+
+    Keeps the query's FROM, JOINs, CTEs and join conditions; drops grouping, ordering and limits.
+    """
+    tree = sqlglot.parse_one(sql, read="snowflake")
+    where = tree.args.get("where") if isinstance(tree, exp.Select) else None
+    if where is None:
+        return None
+    parts = _conjuncts(where.this)
+    joins = [p for p in parts if _is_column_equality(p)]
+    filters = [p for p in parts if not _is_column_equality(p)]
+    if not filters or len(filters) > max_filters:
+        return None
+    probe = tree.copy()
+    projections = ["COUNT(*) AS BASE_ROWS"] + [f"COUNT_IF({_sql(f)}) AS F{i}" for i, f in enumerate(filters)]
+    probe.set("expressions", [sqlglot.parse_one(p, read="snowflake") for p in projections])
+    for key in ("group", "having", "order", "limit", "offset", "qualify", "distinct"):
+        probe.set(key, None)
+    probe.set("where", exp.Where(this=exp.and_(*[j.copy() for j in joins])) if joins else None)
+    return probe.sql(dialect="snowflake"), [_sql(f) for f in filters]
+
+
 def period_filters(sql: str) -> tuple[list[str], list[int]]:
     """Date literals and YEAR(...) comparison values used in the executed SQL's filters."""
     tree = sqlglot.parse_one(sql, read="snowflake")
