@@ -87,9 +87,10 @@ class Profile:
 
     # ---- structure -------------------------------------------------------
     def schema_mapping(self) -> dict[str, dict[str, str]]:
-        """TABLE -> COLUMN -> SQL type, for sqlglot column validation (hidden columns included)."""
+        """TABLE -> COLUMN -> SQL type, for sqlglot column validation. Hidden columns are not available to queries."""
         sql_type = {"number": "DOUBLE", "text": "VARCHAR", "date": "DATE", "timestamp": "TIMESTAMP", "boolean": "BOOLEAN"}
-        return {t.name: {c.name: sql_type.get(c.type, "VARCHAR") for c in t.columns.values()} for t in self.tables.values()}
+        return {t.name: {c.name: sql_type.get(c.type, "VARCHAR") for c in t.columns.values() if not c.hidden}
+                for t in self.tables.values()}
 
     def edges(self) -> list[JoinEdge]:
         return [edge for group in self.joins for edge in group]

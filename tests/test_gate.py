@@ -84,6 +84,9 @@ REJECTED = {
     "account metadata": "SELECT CURRENT_ACCOUNT(), N_NAME FROM NATION",
     "empty": "   ",
     "not sql": "hello world",
+    "hidden personal column": "SELECT C_NAME, C_PHONE FROM CUSTOMER",
+    "star leaks hidden columns": "SELECT * FROM CUSTOMER LIMIT 5",
+    "qualified star": "SELECT c.* FROM CUSTOMER c LIMIT 5",
 }
 
 

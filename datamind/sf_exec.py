@@ -121,12 +121,18 @@ class SnowflakeRunner:
 
     def run_unchecked(self, sql: str) -> tuple[str | None, list[tuple[Any, ...]]]:
         """For setup, smoke tests and evidence export only (never for model SQL)."""
+        query_id, _, rows = self.run_trusted(sql)
+        return query_id, rows
+
+    def run_trusted(self, sql: str) -> tuple[str | None, list[str], list[tuple[Any, ...]]]:
+        """Hand-written SQL (gold answers, introspection): returns query ID, column names and rows."""
         cur = self.connect().cursor()
         try:
             cur.execute(sql)
         except SnowflakeError as exc:
             raise QueryError(_message(exc), getattr(exc, "sfqid", None)) from exc
-        return cur.sfqid, cur.fetchall()
+        columns = [_col_name(d) for d in cur.description] if cur.description else []
+        return cur.sfqid, columns, cur.fetchall()
 
     def close(self) -> None:
         if self._conn is not None:

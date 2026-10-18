@@ -68,6 +68,11 @@ def check_sql(sql: str | None, profile: Profile, max_rows: int | None = None) ->
             name = (node.name if isinstance(node, exp.Anonymous) else node.sql_name()).upper()
             if name in DENIED_FUNCTIONS or name.startswith("SYSTEM$"):
                 errors.append(f"function {name} is not allowed")
+    for select in tree.find_all(exp.Select):
+        if any(isinstance(p, exp.Star) or (isinstance(p, exp.Column) and isinstance(p.this, exp.Star))
+               for p in select.expressions):
+            errors.append("SELECT * is not allowed; list the columns the answer needs")
+            break
     for clause in [*tree.find_all(exp.From), *tree.find_all(exp.Join)]:
         source = clause.this
         if not isinstance(source, (exp.Table, exp.Subquery)):

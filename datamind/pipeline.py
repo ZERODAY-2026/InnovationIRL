@@ -26,7 +26,8 @@ class DataMind:
         self.gemma = gemma or GemmaClient(self.settings)
         self.runner = runner or SnowflakeRunner(self.settings, self.profile.schema)
 
-    def ask(self, question: str, history: list[Turn] | None = None) -> Envelope:
+    def ask(self, question: str, history: list[Turn] | None = None, model_answer: bool = True) -> Envelope:
+        """Answer one question. model_answer=False skips the Gemma wording step (deterministic answer)."""
         env = Envelope(question=question, profile=self.profile.name, status="ERROR")
         question = question.strip()
         if not question:
@@ -88,13 +89,15 @@ class DataMind:
         env.execution = result
         env.receipt = build_receipt(result.sql, self.profile, env.plan.assumptions if env.plan else [], gate.row_cap)
         env.status = "ANSWER"
-        env.answer = self._answer(question, env, allow_cloud)
+        env.answer = self._answer(question, env, allow_cloud, model_answer)
         return env
 
-    def _answer(self, question: str, env: Envelope, allow_cloud: bool) -> RenderedAnswer:
+    def _answer(self, question: str, env: Envelope, allow_cloud: bool, model_answer: bool = True) -> RenderedAnswer:
         result = env.execution
         assert result is not None and env.plan is not None
         money = self.profile.money_columns()
+        if not model_answer and not is_empty(result):
+            return deterministic_answer(result, money)
         if is_empty(result):
             answer = deterministic_answer(result, money)
             note = self._coverage_note()
