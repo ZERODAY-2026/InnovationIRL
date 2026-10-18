@@ -30,8 +30,12 @@ class FakeDM:
         self.settings = SimpleNamespace(gemma_provider="gemini", gemini_model_for=lambda role: "gemma-test",
                                         snowflake_ready=True)
 
-    def ask(self, question, history=None):
-        return self.envs[question]
+    def ask(self, question, history=None, progress=None):
+        env = self.envs[question]
+        if progress and env.execution:
+            for phase in ("planned", "checked", "ran"):
+                progress(phase, env)
+        return env
 
     def rerun(self, env):
         new = env.model_copy(deep=True)
@@ -95,6 +99,7 @@ def test_happy_path_shows_answer_sql_and_query_id(tpch, envs):
     page = text(at)
     assert "<b>JAPAN</b> had the most revenue." in page
     assert "qid-answer" in page and "1. Understood" in " ".join(e.label for e in at.expander)
+    assert "dm-stepper" in page and "SQL written in 0.9 s" in page and "1 row(s)" not in page
     assert any(c.value == SQL for c in at.code)
 
 
@@ -102,6 +107,7 @@ def test_refusal_says_nothing_ran(tpch, envs):
     at = ask(tpch, envs, "drop")
     assert not at.exception
     assert "Nothing was executed in Snowflake." in text(at) and not at.code
+    assert "Refused (unsafe)" in text(at) and "Skipped: nothing ran" in text(at)
 
 
 def test_clarify_offers_reply_chips(tpch, envs):

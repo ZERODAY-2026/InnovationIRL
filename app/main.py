@@ -33,9 +33,15 @@ except Exception as exc:  # configuration problems are shown, not raised
     st.error(f"Configuration problem: {exc}")
     st.stop()
 
-st.title("DataMind")
-html("<p class='dm-sub'>Ask a question in plain English. Snowflake computes the answer; Gemma plans the SQL and words "
-     "the result. Every answer shows the SQL that ran, its checks, the result rows and the Snowflake query ID.</p>")
+html("<div class='dm-head'><h1 class='dm-wordmark'>DataMind</h1>"
+     "<p class='dm-tagline'>Ask your Snowflake data in plain English and see the query behind every answer.</p></div>")
+chips = st.empty()
+with st.expander("How it works"):
+    html("<p>Gemma reads the question and writes one read-only SQL query. A gate checks it (single SELECT, allow-listed "
+         "tables, declared joins) and Snowflake compiles it with EXPLAIN before it runs. Snowflake computes every "
+         "number. Gemma then words the answer, and each value in it is linked to a result cell; if that check fails, "
+         "code writes the answer from the rows. Every answer shows the SQL that ran, its checks, the result rows and "
+         "the Snowflake query ID.</p>")
 catalog, error = None, None
 try:
     with st.spinner("Reading the table list, row counts and samples from Snowflake."):
@@ -44,7 +50,10 @@ except Exception as exc:
     error = str(exc)
 
 ask, data = st.tabs(["Ask", "Data"])
+chips.markdown(ask_tab.chips_html(dm, (st.session_state.get("history") or [None])[-1], catalog is not None),
+               unsafe_allow_html=True)
 with ask:
-    ask_tab.render(dm, catalog is not None)
+    latest = ask_tab.render(dm, catalog is not None)
+chips.markdown(ask_tab.chips_html(dm, latest, catalog is not None), unsafe_allow_html=True)
 with data:
     data_tab.render(dm, catalog, error)

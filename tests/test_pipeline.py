@@ -210,3 +210,20 @@ def test_profile_examples_pass_the_gate(tpch):
 def test_plan_prompt_levels_shrink(tpch):
     sizes = [len(p) for p in plan_prompts(tpch, Q)]
     assert sizes == sorted(sizes, reverse=True) and sizes[-1] < sizes[0] / 2
+
+
+def test_progress_reports_each_real_step_in_order(tpch):
+    dm, gemma, runner = make(tpch, [plan(sql="DELETE FROM ORDERS"), plan()], [{"answer": "{{r0.NATION}} leads."}])
+    events = []
+    env = dm.ask(Q, progress=lambda phase, e: events.append((phase, e.execution is not None)))
+    assert env.status == "ANSWER"
+    assert events == [("planned", False), ("repair", False), ("planned", False), ("checked", False), ("ran", True)]
+
+
+def test_progress_callback_errors_never_stop_the_pipeline(tpch):
+    dm, gemma, runner = make(tpch, [plan()], [{"answer": "{{r0.NATION}} leads."}])
+
+    def broken(phase, env):
+        raise RuntimeError("UI problem")
+
+    assert dm.ask(Q, progress=broken).status == "ANSWER"

@@ -1,6 +1,8 @@
 """Question -> Gemma plan -> gate -> Snowflake EXPLAIN -> Snowflake execution -> cell-bound answer + receipt."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import time
 from typing import Any
 
@@ -27,7 +29,8 @@ class DataMind:
         self.gemma = gemma or GemmaClient(self.settings)
         self.runner = runner or SnowflakeRunner(self.settings, self.profile.schema)
 
-    def ask(self, question: str, history: list[Turn] | None = None, model_answer: bool = True) -> Envelope:
+    def ask(self, question: str, history: list[Turn] | None = None, model_answer: bool = True,
+            progress: Callable[[str, Envelope], None] | None = None) -> Envelope:
         """Answer one question. model_answer=False skips the Gemma wording step (deterministic answer)."""
         env = Envelope(question=question, profile=self.profile.name, status="ERROR")
         question = question.strip()
@@ -53,12 +56,14 @@ class DataMind:
                 env.status = plan.status
                 env.message = _status_message(plan)
                 return env
+            _emit(progress, "planned", env)
             started = time.perf_counter()
             gate = check_sql(plan.sql, self.profile)
             env.gate = gate
             _add_time(env, "gate_ms", started)
             if not gate.ok:
                 repair = (plan.sql or "", gate.errors)
+                _emit(progress, "repair", env)
                 continue
             started = time.perf_counter()
             try:
@@ -70,6 +75,7 @@ class DataMind:
                 problems = [f"Snowflake could not compile the query: {exc}"]
             _add_time(env, "explain_ms", started)
             if not problems:
+                _emit(progress, "checked", env)
                 started = time.perf_counter()
                 try:
                     result = self.runner.execute(gate.sql or "", gate.row_cap or self.profile.max_rows)
@@ -84,6 +90,7 @@ class DataMind:
                 repair = (plan.sql or "", problems)
                 gate = None
                 result = None
+                _emit(progress, "repair", env)
                 continue
             break
         if result is None or gate is None:
@@ -94,6 +101,7 @@ class DataMind:
 
         env.execution = result
         env.receipt = build_receipt(result.sql, self.profile, env.plan.assumptions if env.plan else [], gate.row_cap)
+        _emit(progress, "ran", env)
         env.status = "ANSWER"
         env.answer = self._answer(question, env, allow_cloud, model_answer)
         note = self._outside_coverage_note(result.sql)
@@ -244,3 +252,13 @@ def _status_message(plan: Plan) -> str:
 
 def _add_time(env: Envelope, key: str, started: float) -> None:
     env.timings_ms[key] = env.timings_ms.get(key, 0) + int((time.perf_counter() - started) * 1000)
+
+
+def _emit(progress: Callable[[str, Envelope], None] | None, event: str, env: Envelope) -> None:
+    """Tell the UI that a step finished (planned, repair, checked, ran); a UI problem never stops the pipeline."""
+    if progress is None:
+        return
+    try:
+        progress(event, env)
+    except Exception:  # noqa: BLE001 - Streamlit's rerun/stop signals are BaseException and still propagate
+        pass

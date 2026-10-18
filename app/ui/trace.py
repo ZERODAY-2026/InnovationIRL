@@ -6,6 +6,7 @@ from html import escape
 import streamlit as st
 
 from app.ui.common import flag, html, kv, seconds
+from app.ui.stepper import stepper_html
 from datamind.contracts import Envelope, LLMCall
 
 
@@ -34,6 +35,7 @@ def render(dm, env: Envelope) -> None:
     fq = f"{dm.profile.database}.{dm.profile.schema}"
     rerun = env.previous_query_id is not None
     st.markdown("### How this answer was made")
+    html(stepper_html(env, "final"))
     with st.container(key="trace"):
         with st.expander(f"1. Understood: {_short(plan.standalone_question)} · timed with step 2"):
             hints = dm.profile.value_hints(env.question)
