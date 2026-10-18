@@ -1,26 +1,40 @@
 # DataMind (PS1): plan and status
 
-Last updated 18 Oct 2026, 1:15 PM IST. Final deadline 6:00 PM IST.
+Last updated 18 Oct 2026, 1:50 PM IST. Final deadline 6:00 PM IST.
 
 ## Status: done / next
 Something is listed as done only after it has actually been run.
 
-**Done**
+**Done (verified by 77 offline tests)**
 - Problem analysis and the approved build plan (this document).
 - Checkpoint 1 commit: a README with the problem statement first, the Apache-2.0 licence, a `.gitignore` covering secrets and key files, and `.env.example`.
+- Pinned Python 3.13 environment.
+- TPC-H semantic layer, which loads and validates.
+- Read-only SQL gate:
+  - 17 valid queries pass.
+  - 32 attacks and mistakes are rejected, including DML/DDL, stacked statements, `SYSTEM$` calls, table functions, other databases, unknown columns, undeclared key joins, and constant-only "answers".
+- Gemma client logic, tested against mocked APIs:
+  - the Gemini tier, with probing for system-instruction and JSON-mode support
+  - Ollama backup on a 429, a timeout or a connection error
+  - pydantic-validated JSON
+  - the local context budget, with truncation detection
+  - the plan cache
 
-**In progress (Phase 1, started 1:10 PM)**
-- Python virtual environment with pinned dependencies.
-- Typed contracts, a loader for the TPC-H semantic layer, and a read-only SQL gate with adversarial tests.
-- The Snowflake executor, the Gemma client (Gemini API first, LAN Ollama as backup), and a reproducible `snowflake/setup.sql`.
+**Written but not yet run against live services:**
+- the Snowflake runner
+- `snowflake/setup.sql`
+- `scripts/gen_keypair.py`
+- the smoke test (`python -m datamind.smoke`)
+
+**Blocked:**
+- The live Gemini check is waiting for `GEMINI_API_KEY` in `.env`.
+- The Snowflake check is waiting for the trial account and for `setup.sql` to be run.
 
 **Not working yet:**
 - No end-to-end answers.
-- No queries from the app to Snowflake.
 - No accuracy figures.
-- A teammate is setting up the Snowflake trial account, and the Gemini API key is being added.
 
-**Next:** the Phase 1 exit test at about 1:45 PM, then the first end-to-end answers at about 2:45 PM.
+**Next:** Phase 2, the vertical slice: prompts, cell-bound answer renderer, receipt, pipeline, CLI.
 
 ## Approach: compile, don't chat
 1. **Plan (Gemma).** One structured call returns:
