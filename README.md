@@ -48,16 +48,23 @@ docs/        architecture, evaluation results, evidence
 ## Roadmap
 
 - [x] Problem analysis, scoring-driven design and plan
-- [ ] Phase 1: foundations (contracts, profile loader, SQL gate, Snowflake executor, Gemma client, tests)
-- [ ] Phase 2: vertical slice (question to evidence-backed answer)
-- [ ] Phase 3: ambiguity and missing-data handling, follow-ups, evaluation harness
-- [ ] Phase 4: live data-change demo and second dataset
-- [ ] Phase 5: optional verified insights
+- [x] Phase 1: foundations (contracts, profile loader, SQL gate, Snowflake executor, Gemma client, tests). Verified live by the smoke test.
+- [x] Phase 2: vertical slice (question to evidence-backed answer). Verified live on 5 questions, plus a refused write request.
+- [x] Phase 3: ambiguity and missing-data handling, follow-ups, evaluation harness. Measured on the development set; the held-out run is pending.
+- [ ] Phase 4: live data-change demo and second dataset. Built (re-run with diff, change scripts, OWID profile and seed); the live run is pending.
+- [ ] Phase 5: optional verified insights. Built and tested offline; the live run is pending.
 - [ ] Phase 6: documentation, held-out evaluation, demo recording
 
 ## Evaluation
 
-Accuracy will be measured on question sets whose ground truth is computed by independent, hand-written SQL: a development set and sealed held-out sets. Results will be published as measured in `docs/EVAL.md`. There are no results yet.
+Accuracy is measured on question sets whose ground truth comes from independent, hand-written SQL. Both the gold SQL and DataMind's SQL run in Snowflake, and the results are compared value by value.
+
+So far only the **development** set has been run. The pipeline lane wrote it and used it for tuning, so its scores are optimistic. Sealed held-out sets come next.
+
+Results, tier comparisons and the evidence trail (query IDs, Snowflake query history) are in [docs/EVAL.md](docs/EVAL.md). To run an evaluation:
+```powershell
+.venv\Scripts\python -m datamind.evaluate eval/dev_pipeline.yaml --label my-run
+```
 
 ## Security and responsible data use
 
@@ -112,7 +119,23 @@ On macOS or Linux, use `python3 -m venv .venv`, `.venv/bin/python -m pip install
 .venv\Scripts\python -m pytest            # offline tests, no credentials needed
 .venv\Scripts\python -m datamind.smoke    # Gemini per model ID, Ollama if set, Snowflake permissions
 .venv\Scripts\python -m datamind ask "Which 5 nations had the highest revenue in 1995?"
+.venv\Scripts\python -m streamlit run app/slice_view.py   # review page: evidence, re-run, dig deeper
 ```
+
+### 5. Show an answer changing when the data changes
+1. Run `.venv\Scripts\python -m datamind ask "Which 5 nations had the highest revenue in 1995?" --save .cache/before.json`.
+2. In Snowsight, as `DATAMIND_ADMIN`, run [snowflake/demo_change.sql](snowflake/demo_change.sql). It adds one tagged 1995 order.
+3. Run `.venv\Scripts\python -m datamind rerun .cache/before.json`. The same SQL runs again under a new query ID, and the output lists what changed. The review page's "Re-run on live data" button does the same.
+4. Undo the change with [snowflake/demo_revert.sql](snowflake/demo_revert.sql).
+
+### 6. Second dataset (configuration only)
+1. Run `.venv\Scripts\python scripts/owid_seed.py --download`. It builds the OWID CO2 subset and `snowflake/owid_seed.generated.sql`.
+2. Run that SQL in Snowsight as `DATAMIND_ADMIN`.
+3. Run `.venv\Scripts\python -m datamind.introspect owid`.
+4. Ask questions with `--profile owid`. In the UI, set `DATAMIND_PROFILE=owid` instead.
+
+### 7. Evidence
+`.venv\Scripts\python -m datamind.history --hours 24` exports Snowflake's own query history for every DataMind query (query ID, time, role, status).
 
 ### Troubleshooting
 | Message | Fix |

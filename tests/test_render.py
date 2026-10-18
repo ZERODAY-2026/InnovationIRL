@@ -90,6 +90,24 @@ def test_repeated_values_are_not_linked_to_a_guessed_cell():
     assert [(s.text, s.row) for s in ans.segments if s.row is not None] == [("SHIP", 1)]
 
 
+def test_values_from_different_rows_in_one_clause_are_rejected():
+    ans = render_answer("{{r0.NATION}} earned {{r2.REVENUE}}.", TOP5, Q, MONEY)  # GERMANY with CHINA's revenue
+    assert ans.fallback_used and "different result rows" in ans.rejected_numbers[0]
+    ok = render_answer("{{r0.NATION}} earned {{r0.REVENUE}}, followed by {{r1.NATION}} with {{r1.REVENUE}}.", TOP5, Q, MONEY)
+    assert not ok.fallback_used
+    value_first = render_answer("There were {{r0.REVENUE}} for {{r0.NATION}}, {{r1.REVENUE}} for {{r1.NATION}}.", TOP5, Q, MONEY)
+    assert not value_first.fallback_used
+
+
+def test_citing_one_cell_twice_is_rejected():
+    assert render_answer("{{r0.REVENUE}} was {{r0.REVENUE}}.", TOP5, Q, MONEY).fallback_used
+
+
+def test_large_non_money_decimals_use_two_places():
+    assert format_value(Decimal("-21273168.5619"), "DIFFERENCE") == "-21,273,168.56"
+    assert format_value(Decimal("0.04999"), "AVG_DISCOUNT") == "0.05"
+
+
 def test_fallback_for_many_rows_points_at_cells():
     ans = deterministic_answer(TOP5, MONEY)
     assert ans.text.startswith("5 rows. First row: NATION = GERMANY; REVENUE = 1,234,567.89")

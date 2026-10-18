@@ -46,6 +46,8 @@ def format_value(value: Any, column: str, money_columns: set[str] | frozenset[st
             return f"{number:,.2f}%"
         if number == number.to_integral_value():
             return f"{int(number):,}"
+        if abs(number) >= 100:  # large values: 2 decimals carry the information, more is noise
+            return f"{number:,.2f}"
         return _trim(f"{number:,.4f}")
     return str(value)
 
@@ -84,7 +86,31 @@ def render_answer(template: str, result: ExecutionResult, question: str,
     rejected = _unsupported_numbers(prose, result, question, money_columns, audit_numbers, audit_dates)
     if problems or rejected or not template.strip():
         return deterministic_answer(result, money_columns, rejected=[*problems, *rejected])
-    return RenderedAnswer(segments=_link_literals(segments, result, money_columns), grounded=True)
+    linked = _link_literals(segments, result, money_columns)
+    incoherent = _incoherent(linked)
+    if incoherent:
+        return deterministic_answer(result, money_columns, rejected=[incoherent])
+    return RenderedAnswer(segments=linked, grounded=True)
+
+
+def _incoherent(segments: list[Segment]) -> str | None:
+    """Every value is a real cell, but a clause must not pair cells from different rows
+    (e.g. one nation's name with another nation's revenue) or cite one cell twice ("X was X")."""
+    clause_rows: set[int] = set()
+    cited: set[tuple[int, str]] = set()
+    for segment in segments:
+        if segment.row is None:
+            if re.search(r"[,;.:]|\band\b|\bwhile\b|\bwhereas\b|\bfollowed\b", segment.text):
+                clause_rows, cited = set(), set()
+            continue
+        key = (segment.row, segment.column or "")
+        if key in cited:
+            return f"cites r{segment.row}.{segment.column} twice"
+        cited.add(key)
+        clause_rows.add(segment.row)
+        if len(clause_rows) > 1:
+            return "mixes values from different result rows in one clause"
+    return None
 
 
 def _link_literals(segments: list[Segment], result: ExecutionResult, money_columns) -> list[Segment]:

@@ -263,7 +263,25 @@ def summarize(name: str, label: str, settings, started: datetime, records: list[
     return summary
 
 
+def report_table(paths: list[Path]) -> str:
+    """Markdown table of saved runs, so documentation quotes results instead of retyping them."""
+    lines = ["| Run | Started (UTC) | PLAN model | Thinking | Wording | Overall | Answers | Refusals | Plan median | Repairs | Failed |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for path in paths:
+        run = json.loads(path.read_text(encoding="utf-8"))
+        t = run["totals"]
+        failed = "; ".join(f"{q['id']}: {q['reason'][:60]}" for q in run["questions"] if not q["passed"]) or "none"
+        median = f"{t['plan_ms_median'] / 1000:.1f} s" if t.get("plan_ms_median") else "cached"
+        lines.append(f"| {run['label']} | {run['started_at'][:16]} | {run['plan_model']} | {run['plan_thinking']} | "
+                     f"{'Gemma' if run.get('answers_by_model') else 'code'} | {t['overall']} | {t['answers']} | "
+                     f"{t['refusals']} | {median} | {t['repairs']} | {failed} |")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None and len(sys.argv) > 1 and sys.argv[1] == "--report":
+        print(report_table(sorted(RESULTS_DIR.glob("*_dev_pipeline_*.json"))))
+        return 0
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("set_path", type=Path)
     parser.add_argument("--label", default="default")
