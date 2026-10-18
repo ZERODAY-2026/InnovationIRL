@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from .config import load_settings
 from .contracts import Envelope
@@ -56,6 +58,25 @@ def print_envelope(env: Envelope, money: set[str]) -> None:
               f"{' (cached)' if call.cached else ''}{' (fallback)' if call.fallback_used else ''}")
 
 
+def restore_types(env: Envelope) -> Envelope:
+    """Saved envelopes hold numbers as text; turn all-numeric columns back into Decimals so a re-run diff is exact."""
+    x = env.execution
+    if x is None:
+        return env
+    for i in range(len(x.columns)):
+        values = [row[i] for row in x.rows if row[i] is not None]
+        try:
+            converted = [Decimal(str(v)) for v in values]
+        except InvalidOperation:
+            continue
+        if values and all(isinstance(v, (str, int, float)) for v in values):
+            it = iter(converted)
+            for row in x.rows:
+                if row[i] is not None:
+                    row[i] = next(it)
+    return env
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m datamind")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -63,14 +84,29 @@ def main(argv: list[str] | None = None) -> int:
     ask.add_argument("question")
     ask.add_argument("--profile")
     ask.add_argument("--json", action="store_true", help="print the full evidence envelope as JSON")
+    ask.add_argument("--save", type=Path, help="save the evidence envelope (for a later re-run)")
+    rerun = sub.add_parser("rerun", help="run a saved answer's SQL again on live data and list what changed")
+    rerun.add_argument("envelope", type=Path)
+    rerun.add_argument("--save", type=Path)
     args = parser.parse_args(argv)
     settings = load_settings()
-    profile = load_profile(args.profile or settings.profile)
-    env = DataMind(settings, profile).ask(args.question)
-    if args.json:
-        print(env.model_dump_json(indent=2))
-    else:
+    if args.command == "rerun":
+        previous = restore_types(Envelope.model_validate_json(args.envelope.read_text(encoding="utf-8")))
+        profile = load_profile(previous.profile)
+        env = DataMind(settings, profile).rerun(previous)
         print_envelope(env, profile.money_columns())
+        print(f"Previous query ID: {env.previous_query_id}")
+        print("Changes:\n  " + "\n  ".join(env.changes))
+    else:
+        profile = load_profile(args.profile or settings.profile)
+        env = DataMind(settings, profile).ask(args.question)
+        if args.json:
+            print(env.model_dump_json(indent=2))
+        else:
+            print_envelope(env, profile.money_columns())
+    if args.save:
+        args.save.write_text(env.model_dump_json(indent=2), encoding="utf-8")
+        print(f"Saved evidence envelope to {args.save}")
     return 0 if env.status != "ERROR" else 1
 
 
